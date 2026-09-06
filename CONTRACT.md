@@ -47,7 +47,13 @@ array **already reprojected to the AOI metric CRS on a square grid**.
 ## Layer names (fixed vocabulary)
 
 `streets`, `buildings`, `landuse`, `landcover`, `amenities`, `terrain`,
-`climate`, `constraints`.
+`climate`, `constraints`, `building_height`.
+
+`building_height` is not a footprint layer: it carries no per-building
+geometry, only a reprojected raster plus `data={"mean_height_m": ...}`. It
+exists as a floor-space-index FALLBACK for when the `buildings` layer's own
+OSM height coverage is too sparse to trust (see `sce/providers/height_ghsl.py`
+and `sce/metrics/fabric.py`).
 
 ## Metric contract
 

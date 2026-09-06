@@ -13,16 +13,23 @@ pytest.importorskip("sce.providers")
 from sce.registry import REGISTRY
 from sce.types import Provider
 
-LAYERS = {
-    "streets",
-    "buildings",
-    "landuse",
-    "landcover",
-    "amenities",
-    "terrain",
-    "climate",
-    "constraints",
-}
+# The layer vocabulary is defined once, in sce.cli, because the CLI has to
+# offer it as a choice anyway. Copying it here would mean a new layer passes its
+# own test while the command that fetches it has never heard of it.
+from sce.cli import LAYERS as _LAYER_TUPLE
+
+LAYERS = set(_LAYER_TUPLE)
+
+
+def test_the_layer_vocabulary_is_documented():
+    """CONTRACT.md is what the next provider author reads. A layer the code
+    accepts but the contract never names is a layer nobody knows exists."""
+    from pathlib import Path
+
+    contract = Path(__file__).resolve().parents[2] / "CONTRACT.md"
+    text = contract.read_text()
+    undocumented = sorted(layer for layer in LAYERS if f"`{layer}`" not in text)
+    assert not undocumented, f"layers missing from CONTRACT.md: {undocumented}"
 
 
 def _providers():

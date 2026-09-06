@@ -13,14 +13,13 @@ import math
 
 import numpy as np
 import rasterio
-from affine import Affine
 from rasterio.io import MemoryFile
 from rasterio.merge import merge as rio_merge
-from rasterio.warp import Resampling, reproject
 from rasterio.windows import from_bounds
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._terrain_grid import elevation_summary, reproject_merged_to_square_grid
 
 BUCKET_HTTPS = "https://copernicus-dem-30m.s3.amazonaws.com"
 RESOLUTION_M = 30.0
@@ -81,25 +80,10 @@ class CopernicusTerrainProvider(Provider):
             for mf in memfiles:
                 mf.close()
 
-        minx, miny, maxx, maxy = aoi.bounds_metric
-        width = max(1, math.ceil((maxx - minx) / RESOLUTION_M))
-        height = max(1, math.ceil((maxy - miny) / RESOLUTION_M))
-        dst_transform = Affine(RESOLUTION_M, 0.0, minx, 0.0, -RESOLUTION_M, maxy)
-        dst_arr = np.full((height, width), np.nan, dtype=np.float32)
-
-        reproject(
-            source=merged_arr,
-            destination=dst_arr,
-            src_transform=merged_transform,
-            src_crs=src_crs,
-            dst_transform=dst_transform,
-            dst_crs=aoi.crs,
-            resampling=Resampling.bilinear,
-            src_nodata=None,
-            dst_nodata=np.nan,
+        dst_arr, dst_transform = reproject_merged_to_square_grid(
+            merged_arr, merged_transform, src_crs, aoi, RESOLUTION_M
         )
 
-        valid = dst_arr[~np.isnan(dst_arr)]
         source = Source(
             name="Copernicus DEM GLO-30 (ESA/Airbus DS, AWS Open Data)",
             url=BUCKET_HTTPS,
@@ -124,9 +108,8 @@ class CopernicusTerrainProvider(Provider):
                 "res": (RESOLUTION_M, RESOLUTION_M),
             },
             data={
-                "min_elevation_m": float(valid.min()) if valid.size else None,
-                "max_elevation_m": float(valid.max()) if valid.size else None,
-                "mean_elevation_m": float(valid.mean()) if valid.size else None,
+                "terrain_model": "DSM",
+                **elevation_summary(dst_arr),
             },
             sources=[source],
             coverage=1.0,

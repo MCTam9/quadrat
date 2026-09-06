@@ -1,9 +1,13 @@
 """Terrain metrics from a projected elevation raster.
 
-`terrain_model` is stamped "DSM" on every result: Copernicus GLO-30, the
-global default elevation source behind `layers["terrain"]`, is a digital
-SURFACE model — it includes rooftops and tree canopy, not bare ground. Slope
-and aspect computed from it will read steeper and noisier over built-up or
+`terrain_model` is read from the provider's own declaration
+(`layers["terrain"].data["terrain_model"]`), defaulting to "DSM" only when a
+provider does not state one. Copernicus GLO-30, the global default elevation
+source behind `layers["terrain"]`, is a digital SURFACE model — it includes
+rooftops and tree canopy, not bare ground — which is why "DSM" is the safe
+default rather than "DTM". FABDEM (`sce/providers/terrain_fabdem.py`, opt-in
+via `--dtm fabdem`) declares "DTM" instead, because it is bare earth. Slope
+and aspect computed from a DSM will read steeper and noisier over built-up or
 wooded ground than a true DTM would. That caveat belongs on the sheet next to
 every number this module produces, not just in a footnote.
 """
@@ -67,6 +71,15 @@ def terrain_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
 
     flat_mask = valid & (slope_deg < 1e-6)
 
+    terrain_model = (terrain.data or {}).get("terrain_model") or "DSM"
+    terrain_model_note = (
+        "Bare-earth DTM (FABDEM v1.2): canopy and building height are removed."
+        if terrain_model == "DTM"
+        else "Copernicus GLO-30 is a digital surface model: elevations include "
+        "rooftops and tree canopy, not bare ground. Slope and aspect here "
+        "inherit that bias."
+    )
+
     result: dict[str, Any] = {
         "slope_mean_deg": float(np.nanmean(slope_deg)),
         "slope_mean_pct": float(np.nanmean(np.tan(slope_rad)) * 100.0),
@@ -78,12 +91,8 @@ def terrain_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
         "elevation_mean_m": float(np.nanmean(array)),
         "elevation_range_m": float(np.nanmax(array) - np.nanmin(array)),
         "dominant_aspect": _dominant_aspect(aspect_deg[valid], flat_mask[valid]),
-        "terrain_model": "DSM",
-        "terrain_model_note": (
-            "Copernicus GLO-30 is a digital surface model: elevations include "
-            "rooftops and tree canopy, not bare ground. Slope and aspect here "
-            "inherit that bias."
-        ),
+        "terrain_model": terrain_model,
+        "terrain_model_note": terrain_model_note,
     }
     return result
 
