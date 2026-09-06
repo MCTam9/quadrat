@@ -10,7 +10,7 @@ the other.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import requests
@@ -26,15 +26,36 @@ KMH_TO_MS = 1000.0 / 3600.0
 
 # 16-point compass, centred bins 22.5 degrees wide starting at N.
 DIRECTION_LABELS = [
-    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
 ]
 SPEED_BIN_EDGES_MS = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, float("inf")]
 SPEED_BIN_LABELS = ["0-2", "2-4", "4-6", "6-8", "8-10", "10+"]
 
 
 def _last_complete_year() -> int:
-    today = date.today()
+    """The most recent calendar year that has certainly finished, in UTC.
+
+    Local date would make the period machine-dependent: two runs either side of
+    midnight in different timezones would request different years and cache the
+    result under the same key. ERA5 also lags real time by several days, so the
+    conservative boundary costs nothing.
+    """
+    today = datetime.now(UTC).date()
     return today.year - 1 if today.month > 1 or today.day > 1 else today.year - 2
 
 
@@ -47,10 +68,10 @@ class OpenMeteoProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         lon, lat = aoi.centroid_lonlat
         end_year = _last_complete_year()
         start_year = end_year - (YEARS_OF_RECORD - 1)
@@ -73,7 +94,7 @@ class OpenMeteoProvider(Provider):
             return resp.json(), {
                 "url": resp.url,
                 "requested_lonlat": [lon, lat],
-                "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "retrieved_at": datetime.now(UTC).isoformat(timespec="seconds"),
             }
 
         payload, meta = cache.get_json(key, _producer)
@@ -149,7 +170,7 @@ class OpenMeteoProvider(Provider):
 
         total = max(speed_ms.size, 1)
         table = np.zeros((len(DIRECTION_LABELS), len(SPEED_BIN_LABELS)), dtype=float)
-        for d, s in zip(dir_idx, speed_idx):
+        for d, s in zip(dir_idx, speed_idx, strict=False):
             table[d, s] += 1.0
         table /= total
 

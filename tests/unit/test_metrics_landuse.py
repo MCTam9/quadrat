@@ -25,7 +25,9 @@ def test_osm_landuse_fractions_sum_to_one_with_unmapped():
     aoi = _aoi()
     residential = box(-50, -50, -10, 50)
     commercial = box(-10, -50, 10, 50)
-    gdf = gpd.GeoDataFrame({"landuse": ["residential", "commercial"]}, geometry=[residential, commercial], crs=aoi.crs)
+    gdf = gpd.GeoDataFrame(
+        {"landuse": ["residential", "commercial"]}, geometry=[residential, commercial], crs=aoi.crs
+    )
     layers = {"landuse": LayerResult(layer="landuse", provider="synthetic", gdf=gdf)}
     result = landuse_metrics(layers, aoi)
 

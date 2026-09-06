@@ -218,9 +218,7 @@ def test_bbox_wgs84_round_trips_the_centre(lon, lat):
 
 def test_geometry_wgs84_matches_bbox_wgs84():
     aoi = AOI.from_point(69.2401, 41.2995, 800.0, name="wgs84-consistency")
-    assert tuple(round(v, 9) for v in aoi.geometry_wgs84.bounds) == tuple(
-        round(v, 9) for v in aoi.bbox_wgs84
-    )
+    assert tuple(round(v, 9) for v in aoi.geometry_wgs84.bounds) == tuple(round(v, 9) for v in aoi.bbox_wgs84)
 
 
 # ---------------------------------------------------------------------------

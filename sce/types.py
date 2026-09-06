@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import geopandas as gpd
@@ -16,7 +16,7 @@ class Source:
     name: str
     url: str
     licence: str
-    retrieved: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    retrieved: str = field(default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds"))
     note: str = ""
     licence_url: str = ""
     commercial_ok: bool = True
@@ -62,7 +62,7 @@ class LayerResult:
         return {
             "layer": self.layer,
             "provider": self.provider,
-            "features": 0 if self.gdf is None else int(len(self.gdf)),
+            "features": 0 if self.gdf is None else len(self.gdf),
             "coverage": self.coverage,
             "degraded": self.degraded,
             "sources": [s.to_dict() for s in self.sources],
@@ -83,11 +83,11 @@ class Provider:
     rank: int = 100
     commercial_ok: bool = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         """True when this provider can serve this AOI (e.g. inside GB only)."""
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         raise NotImplementedError
 
     def __repr__(self) -> str:

@@ -5,18 +5,27 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 DEFAULT_CACHE = Path(os.environ.get("SCE_CACHE", Path.home() / ".cache" / "sce"))
 
 
 class Cache:
-    def __init__(self, root: Path | str | None = None, *, offline: bool = False) -> None:
+    def __init__(self, root: Path | str | None = None, *, offline: bool | None = None) -> None:
+        """`offline` defaults to the SCE_OFFLINE environment variable.
+
+        Passing it explicitly wins in both directions. The two used to be OR-ed,
+        which meant a caller could switch offline mode on but never off, so a
+        test suite that set the variable globally could not carve out an
+        exception for the handful of tests that are supposed to reach the
+        network.
+        """
         self.root = Path(root) if root else DEFAULT_CACHE
         self.root.mkdir(parents=True, exist_ok=True)
-        self.offline = offline or os.environ.get("SCE_OFFLINE") == "1"
+        self.offline = (os.environ.get("SCE_OFFLINE") == "1") if offline is None else offline
 
     def key(self, *parts: Any) -> str:
         raw = "|".join(str(p) for p in parts)
@@ -33,7 +42,7 @@ class Cache:
 
     def write_meta(self, key: str, suffix: str, meta: dict[str, Any]) -> None:
         meta = dict(meta)
-        meta.setdefault("cached_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        meta.setdefault("cached_at", datetime.now(UTC).isoformat(timespec="seconds"))
         self.meta_path(key, suffix).write_text(json.dumps(meta, indent=2))
 
     def read_meta(self, key: str, suffix: str) -> dict[str, Any]:
@@ -57,7 +66,9 @@ class Cache:
         self.write_meta(key, suffix, meta)
         return blob, meta
 
-    def get_json(self, key: str, producer: Callable[[], tuple[Any, dict[str, Any]]]) -> tuple[Any, dict[str, Any]]:
+    def get_json(
+        self, key: str, producer: Callable[[], tuple[Any, dict[str, Any]]]
+    ) -> tuple[Any, dict[str, Any]]:
         p = self.path(key, ".json")
         if p.exists():
             return json.loads(p.read_text()), self.read_meta(key, ".json")

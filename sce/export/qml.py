@@ -32,7 +32,9 @@ _SINGLE_SYMBOL_STYLE = {
 }
 
 
-def _fill_symbol_xml(colour: str, outline_colour: str = "0,0,0,255", outline_width: str = "0.2") -> ET.Element:
+def _fill_symbol_xml(
+    colour: str, outline_colour: str = "0,0,0,255", outline_width: str = "0.2"
+) -> ET.Element:
     symbol = ET.Element("symbol", {"type": "fill", "name": "0", "alpha": "1"})
     layer = ET.SubElement(symbol, "layer", {"class": "SimpleFill", "enabled": "1"})
     for key, val in {

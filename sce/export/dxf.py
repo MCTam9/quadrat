@@ -9,7 +9,6 @@ notice baked into the drawing text and into ezdxf's custom metadata store
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import ezdxf
 import numpy as np
@@ -30,13 +29,13 @@ _LAYER_SPEC: dict[str, tuple[int, int]] = {
 _CONTOUR_INTERVALS = (1.0, 2.0, 5.0, 10.0, 25.0)
 
 
-def _ensure_layers(doc) -> None:  # noqa: ANN001
+def _ensure_layers(doc) -> None:
     for name, (colour, lw) in _LAYER_SPEC.items():
         if name not in doc.layers:
             doc.layers.add(name=name, color=colour, lineweight=lw)
 
 
-def _exterior_and_holes(geom) -> list[list[tuple[float, float]]]:  # noqa: ANN001
+def _exterior_and_holes(geom) -> list[list[tuple[float, float]]]:
     """Return one ring list per polygon (exterior first, then holes) for a
     Polygon or every part of a MultiPolygon."""
     rings: list[list[tuple[float, float]]] = []
@@ -45,19 +44,18 @@ def _exterior_and_holes(geom) -> list[list[tuple[float, float]]]:  # noqa: ANN00
         if g.is_empty:
             continue
         rings.append(list(g.exterior.coords))
-        for interior in g.interiors:
-            rings.append(list(interior.coords))
+        rings.extend(list(interior.coords) for interior in g.interiors)
     return rings
 
 
-def _add_closed_polyline(msp, ring: list[tuple[float, float]], layer: str) -> None:  # noqa: ANN001
+def _add_closed_polyline(msp, ring: list[tuple[float, float]], layer: str) -> None:
     pts = [(x, y) for x, y, *_ in ring]
     if len(pts) < 3:
         return
     msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
 
 
-def _add_line_geometry(msp, geom, layer: str) -> int:  # noqa: ANN001
+def _add_line_geometry(msp, geom, layer: str) -> int:
     count = 0
     geoms = list(geom.geoms) if geom.geom_type in ("MultiLineString",) else [geom]
     for g in geoms:
@@ -71,7 +69,7 @@ def _add_line_geometry(msp, geom, layer: str) -> int:  # noqa: ANN001
     return count
 
 
-def _write_buildings(msp, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_buildings(msp, result: LayerResult | None) -> int:
     count = 0
     if result is None or result.gdf is None:
         return count
@@ -86,7 +84,7 @@ def _write_buildings(msp, result: LayerResult | None) -> int:  # noqa: ANN001
     return count
 
 
-def _write_streets(msp, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_streets(msp, result: LayerResult | None) -> int:
     count = 0
     if result is None or result.gdf is None:
         return count
@@ -99,7 +97,7 @@ def _write_streets(msp, result: LayerResult | None) -> int:  # noqa: ANN001
     return count
 
 
-def _write_landuse(msp, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_landuse(msp, result: LayerResult | None) -> int:
     count = 0
     if result is None or result.gdf is None:
         return count
@@ -123,7 +121,9 @@ def _choose_contour_interval(zmin: float, zmax: float) -> float:
     return _CONTOUR_INTERVALS[-1]
 
 
-def _contour_segments(array: np.ndarray, transform, interval: float) -> list[tuple[float, list[tuple[float, float]]]]:
+def _contour_segments(
+    array: np.ndarray, transform, interval: float
+) -> list[tuple[float, list[tuple[float, float]]]]:
     """(elevation, [(x, y), ...]) pairs in metric coordinates.
 
     `matplotlib.contour.ContourSet.allsegs` returns, per requested level, a
@@ -159,21 +159,23 @@ def _contour_segments(array: np.ndarray, transform, interval: float) -> list[tup
         cs = ax.contour(xs, ys, array, levels=levels)
         out: list[tuple[float, list[tuple[float, float]]]] = []
         if hasattr(cs, "allsegs"):
-            for level, segs in zip(cs.levels, cs.allsegs):
-                for seg in segs:
-                    if len(seg) >= 2:
-                        out.append((float(level), [(float(x), float(y)) for x, y in seg]))
+            for level, segs in zip(cs.levels, cs.allsegs, strict=False):
+                out.extend(
+                    (float(level), [(float(x), float(y)) for x, y in seg]) for seg in segs if len(seg) >= 2
+                )
         else:  # pragma: no cover - fallback for matplotlib >= 3.10 collections removal
-            for level, path in zip(cs.levels, cs.get_paths()):
-                for polygon in path.to_polygons():
-                    if len(polygon) >= 2:
-                        out.append((float(level), [(float(x), float(y)) for x, y in polygon]))
+            for level, path in zip(cs.levels, cs.get_paths(), strict=False):
+                out.extend(
+                    (float(level), [(float(x), float(y)) for x, y in polygon])
+                    for polygon in path.to_polygons()
+                    if len(polygon) >= 2
+                )
         return out
     finally:
         plt.close(fig)
 
 
-def _write_contours(msp, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_contours(msp, result: LayerResult | None) -> int:
     if result is None or result.raster is None:
         return 0
     raster = result.raster
@@ -194,7 +196,7 @@ def _write_contours(msp, result: LayerResult | None) -> int:  # noqa: ANN001
     return count
 
 
-def _add_boundary(msp, aoi) -> None:  # noqa: ANN001
+def _add_boundary(msp, aoi) -> None:
     pts = list(aoi.geometry.exterior.coords)
     _add_closed_polyline(msp, pts, "SITE-BOUNDARY")
 
@@ -223,7 +225,7 @@ def _notes_text(aoi, layers: dict[str, LayerResult]) -> list[str]:
     return lines
 
 
-def write_dxf(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:  # noqa: ANN001
+def write_dxf(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:
     """Write buildings, streets, landuse, terrain contours and the AOI boundary
     to a metric DXF, with a text block carrying provenance and licence."""
     path = Path(path)
@@ -249,7 +251,7 @@ def write_dxf(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:  #
     _write_landuse(msp, layers.get("landuse"))
     _write_contours(msp, layers.get("terrain"))
 
-    minx, miny, maxx, maxy = aoi.bounds_metric
+    minx, miny, _maxx, maxy = aoi.bounds_metric
     text_y = miny - (maxy - miny) * 0.05 - len(notes) * 2.5
     for i, line in enumerate(notes):
         msp.add_text(

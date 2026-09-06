@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 from .types import LayerResult, Provider
 
@@ -30,14 +30,14 @@ class Registry:
             return [p for ps in self._by_layer.values() for p in ps]
         return list(self._by_layer.get(layer, []))
 
-    def chain(self, layer: str, aoi) -> list[Provider]:  # noqa: ANN001
+    def chain(self, layer: str, aoi) -> list[Provider]:
         return [p for p in self._by_layer.get(layer, []) if p.available(aoi)]
 
     def fetch(
         self,
         layer: str,
-        aoi,  # noqa: ANN001
-        cache,  # noqa: ANN001
+        aoi,
+        cache,
         *,
         override: str | None = None,
         allow_non_commercial: bool = False,
@@ -55,7 +55,7 @@ class Registry:
                 continue
             try:
                 result = provider.fetch(aoi, cache)
-            except Exception as exc:  # noqa: BLE001 - fallback is the point
+            except Exception as exc:
                 log.warning("provider %s failed for %s: %s", provider.name, layer, exc)
                 tried.append(f"{provider.name}: {type(exc).__name__}: {exc}")
                 continue

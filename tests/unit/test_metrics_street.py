@@ -51,7 +51,9 @@ def test_perfect_grid_orientation_order_is_one():
     result = street_metrics(layers, aoi)
     assert result["orientation_order_phi"] == pytest.approx(1.0, abs=1e-9)
     assert result["orientation_entropy_nats"] == pytest.approx(__import__("math").log(4), abs=1e-9)
-    assert sum(result["orientation_bins"]) == pytest.approx(sum(1 for _ in layers["streets"].data["graph"].edges()))
+    assert sum(result["orientation_bins"]) == pytest.approx(
+        sum(1 for _ in layers["streets"].data["graph"].edges())
+    )
 
 
 def test_perfect_grid_known_counts_and_densities():

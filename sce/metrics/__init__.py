@@ -8,7 +8,8 @@ provider chain came up empty rather than raising deep inside a metric.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..aoi import AOI
 from ..types import LayerResult
@@ -49,7 +50,7 @@ def compute_all(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             continue
         try:
             results[name] = fn(layers, aoi)
-        except Exception as exc:  # noqa: BLE001 - one metric's failure must not abort the run
+        except Exception as exc:
             log.warning("metric %s failed: %s", name, exc)
             errors[name] = f"{type(exc).__name__}: {exc}"
 

@@ -44,7 +44,6 @@ import math
 import zipfile
 
 import numpy as np
-import rasterio
 from affine import Affine
 from pyproj import CRS, Transformer
 from rasterio.io import MemoryFile
@@ -68,8 +67,8 @@ NODATA_SENTINEL = 255.0  # ANBH tiles use this as the nodata flag, not a real he
 
 
 def _tile_rc(x: float, y: float) -> tuple[int, int]:
-    col = int(math.floor((x - GRID_ORIGIN_X) / TILE_SIZE_M)) + 1
-    row = int(math.floor((GRID_ORIGIN_Y_TOP - y) / TILE_SIZE_M)) + 1
+    col = math.floor((x - GRID_ORIGIN_X) / TILE_SIZE_M) + 1
+    row = math.floor((GRID_ORIGIN_Y_TOP - y) / TILE_SIZE_M) + 1
     return row, col
 
 
@@ -87,12 +86,14 @@ class GhslBuildingHeightProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         to_mollweide = Transformer.from_crs(aoi.crs, MOLLWEIDE, always_xy=True)
-        corners_x, corners_y = zip(*(to_mollweide.transform(x, y) for x, y in aoi.geometry.exterior.coords))
+        corners_x, corners_y = zip(
+            *(to_mollweide.transform(x, y) for x, y in aoi.geometry.exterior.coords), strict=False
+        )
         minx, maxx = min(corners_x), max(corners_x)
         miny, maxy = min(corners_y), max(corners_y)
         row0, col0 = _tile_rc(minx, maxy)

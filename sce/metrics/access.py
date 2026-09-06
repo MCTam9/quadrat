@@ -87,7 +87,9 @@ def access_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             col = "category" if "category" in nearby.columns else None
             if col is not None:
                 categories = set(nearby[col].dropna().astype(str))
-        result["amenity_category_count_10min"] = len(categories) if categories or amenities is not None else None
+        result["amenity_category_count_10min"] = (
+            len(categories) if categories or amenities is not None else None
+        )
 
     transit = layers.get("amenities")
     nearest_transit_m: float | None = None
@@ -99,9 +101,7 @@ def access_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             # The amenities provider's vocabulary is fixed in CONTRACT.md:
             # food, retail, education, health, transport, civic, leisure, other.
             # The older names are kept only so a stale fixture still resolves.
-            transit_rows = gdf[
-                gdf[col].astype(str).str.lower().isin(TRANSPORT_CATEGORIES)
-            ]
+            transit_rows = gdf[gdf[col].astype(str).str.lower().isin(TRANSPORT_CATEGORIES)]
             if len(transit_rows):
                 nearest_transit_m = float(transit_rows.geometry.distance(centre).min())
     result["nearest_transit_distance_m"] = nearest_transit_m

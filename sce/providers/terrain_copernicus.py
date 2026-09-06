@@ -44,10 +44,10 @@ class CopernicusTerrainProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         w, s, e, n = aoi.bbox_wgs84
         lat0, lat1 = math.floor(s), math.floor(n)
         lon0, lon1 = math.floor(w), math.floor(e)
@@ -127,13 +127,17 @@ class CopernicusTerrainProvider(Provider):
         def _producer() -> tuple[bytes, dict]:
             remote = f"/vsicurl/{url}"
             with rasterio.open(remote) as src:
-                win = from_bounds(
-                    max(w, lon) - _PAD_DEG,
-                    max(s, lat) - _PAD_DEG,
-                    min(e, lon + 1) + _PAD_DEG,
-                    min(n, lat + 1) + _PAD_DEG,
-                    transform=src.transform,
-                ).round_lengths().round_offsets()
+                win = (
+                    from_bounds(
+                        max(w, lon) - _PAD_DEG,
+                        max(s, lat) - _PAD_DEG,
+                        min(e, lon + 1) + _PAD_DEG,
+                        min(n, lat + 1) + _PAD_DEG,
+                        transform=src.transform,
+                    )
+                    .round_lengths()
+                    .round_offsets()
+                )
                 arr = src.read(1, window=win, boundless=True, fill_value=0.0)
                 transform = src.window_transform(win)
                 profile = src.profile.copy()

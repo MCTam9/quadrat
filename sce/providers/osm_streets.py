@@ -24,10 +24,10 @@ class OsmStreetsProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         ox.settings.cache_folder = str(cache.root / "osmnx")
         ox.settings.use_cache = True
         (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
@@ -40,7 +40,7 @@ class OsmStreetsProvider(Provider):
                 retain_all=True,
                 truncate_by_edge=True,
             )
-        except Exception as exc:  # noqa: BLE001 - registry falls through on raise
+        except Exception as exc:
             raise RuntimeError(f"osm_streets: Overpass query failed: {exc}") from exc
 
         if graph.number_of_edges() == 0:

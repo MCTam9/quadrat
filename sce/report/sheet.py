@@ -14,20 +14,21 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.gridspec import GridSpec  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 
-from .. import __version__  # noqa: E402
-from ..aoi import AOI  # noqa: E402
-from . import figures as F  # noqa: E402
-from . import style as S  # noqa: E402
-from .tables import metric_rows  # noqa: E402
+from .. import __version__
+from ..aoi import AOI
+from . import figures as F
+from . import style as S
+from .tables import metric_rows
 
 
 def _git_sha() -> str:
     try:
-        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                             capture_output=True, text=True, timeout=5, check=False)
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5, check=False
+        )
         return out.stdout.strip() or "nogit"
     except (OSError, subprocess.SubprocessError):
         return "nogit"
@@ -48,9 +49,15 @@ def render_sheet(
     # Left two thirds is the figure-ground; the right third is the analytical
     # column. Nothing competes with the drawing for the eye.
     gs = GridSpec(
-        6, 12, figure=fig,
-        left=0.035, right=0.965, top=0.895, bottom=0.075,
-        wspace=0.55, hspace=0.75,
+        6,
+        12,
+        figure=fig,
+        left=0.035,
+        right=0.965,
+        top=0.895,
+        bottom=0.075,
+        wspace=0.55,
+        hspace=0.75,
     )
 
     ax_fg = fig.add_subplot(gs[0:4, 0:7])
@@ -92,8 +99,7 @@ def render_sheet(
     _header(fig, aoi)
     _title_block(fig, aoi, layers, _warnings_of(assessment))
 
-    fig.savefig(path, format=path.suffix.lstrip(".") or "pdf",
-                bbox_inches=None, facecolor=S.PAPER)
+    fig.savefig(path, format=path.suffix.lstrip(".") or "pdf", bbox_inches=None, facecolor=S.PAPER)
     plt.close(fig)
     return path
 
@@ -113,7 +119,11 @@ def _terrain_sub(metrics: dict[str, Any]) -> str:
     lo, hi = t.get("elevation_min_m"), t.get("elevation_max_m")
     if lo is None or hi is None:
         return ""
-    return f"{lo:.0f}–{hi:.0f} m  ·  DSM"
+    # Read the model from the metric rather than hard-coding it: with --dtm
+    # fabdem this panel is bare earth, and saying DSM would be a lie.
+    model = t.get("terrain_model") or "DSM"
+    # En dash, because this is a range and not a minus sign.
+    return f"{lo:.0f}\u2013{hi:.0f} m  \u00b7  {model}"
 
 
 def _metrics_table(ax, metrics: dict[str, Any]) -> None:
@@ -135,34 +145,55 @@ def _metrics_table(ax, metrics: dict[str, Any]) -> None:
         y = i + 0.72
         cursor += 1.5 if row.note else 1.0
         if row.is_section:
-            ax.text(0, y, " ".join(row.label.upper()), fontsize=S.FS["micro"],
-                    color=S.MUTED, weight="bold", va="baseline")
-            ax.plot([0, 1], [i + 0.92, i + 0.92], color=S.FAINT,
-                    lw=S.LW["hair"], clip_on=False)
+            ax.text(
+                0,
+                y,
+                " ".join(row.label.upper()),
+                fontsize=S.FS["micro"],
+                color=S.MUTED,
+                weight="bold",
+                va="baseline",
+            )
+            ax.plot([0, 1], [i + 0.92, i + 0.92], color=S.FAINT, lw=S.LW["hair"], clip_on=False)
             continue
         ax.text(0, y, row.label, fontsize=S.FS["small"], color=S.INK, va="baseline")
-        ax.text(1, y, row.value, fontsize=S.FS["small"], color=S.INK,
-                va="baseline", ha="right", family="monospace")
+        ax.text(
+            1,
+            y,
+            row.value,
+            fontsize=S.FS["small"],
+            color=S.INK,
+            va="baseline",
+            ha="right",
+            family="monospace",
+        )
         if row.note:
-            ax.text(0, y + 0.42, row.note, fontsize=S.FS["micro"], color=S.MUTED,
-                    va="baseline", ha="left")
+            ax.text(0, y + 0.42, row.note, fontsize=S.FS["micro"], color=S.MUTED, va="baseline", ha="left")
 
 
 def _header(fig, aoi: AOI) -> None:
     lon, lat = aoi.centroid_lonlat
-    fig.text(0.035, 0.955, aoi.name.upper(), fontsize=S.FS["title"], color=S.INK,
-             weight="bold", va="top")
-    fig.text(0.035, 0.925, "SITE CONTEXT REPORT", fontsize=S.FS["small"],
-             color=S.MUTED, va="top")
-    fig.text(0.965, 0.955,
-             f"{abs(lat):.5f}° {'N' if lat >= 0 else 'S'}   "
-             f"{abs(lon):.5f}° {'E' if lon >= 0 else 'W'}",
-             fontsize=S.FS["label"], color=S.INK, ha="right", va="top",
-             family="monospace")
-    fig.text(0.965, 0.928,
-             f"{aoi.epsg}   ·   {aoi.area_ha:.0f} ha   ·   "
-             f"r = {aoi.radius_m:.0f} m" if aoi.radius_m else aoi.epsg,
-             fontsize=S.FS["small"], color=S.MUTED, ha="right", va="top")
+    fig.text(0.035, 0.955, aoi.name.upper(), fontsize=S.FS["title"], color=S.INK, weight="bold", va="top")
+    fig.text(0.035, 0.925, "SITE CONTEXT REPORT", fontsize=S.FS["small"], color=S.MUTED, va="top")
+    fig.text(
+        0.965,
+        0.955,
+        f"{abs(lat):.5f}° {'N' if lat >= 0 else 'S'}   {abs(lon):.5f}° {'E' if lon >= 0 else 'W'}",
+        fontsize=S.FS["label"],
+        color=S.INK,
+        ha="right",
+        va="top",
+        family="monospace",
+    )
+    fig.text(
+        0.965,
+        0.928,
+        f"{aoi.epsg}   ·   {aoi.area_ha:.0f} ha   ·   r = {aoi.radius_m:.0f} m" if aoi.radius_m else aoi.epsg,
+        fontsize=S.FS["small"],
+        color=S.MUTED,
+        ha="right",
+        va="top",
+    )
     S.rule_line(fig, 0.912, lw=S.LW["line"])
 
 
@@ -182,22 +213,46 @@ def _title_block(fig, aoi: AOI, layers: dict[str, Any], warnings: list[str] | No
             if not getattr(src, "commercial_ok", True):
                 non_commercial.append(src.name)
 
-    lines = []
-    for src in list(seen.values())[:4]:
-        lines.append(f"{src.name} ({src.licence}, retrieved {src.retrieved[:10]})")
+    lines = [f"{src.name} ({src.licence}, retrieved {src.retrieved[:10]})" for src in list(seen.values())[:4]]
     if lines:
-        fig.text(0.035, 0.042, "SOURCES   " + "   ·   ".join(lines),
-                 fontsize=S.FS["micro"], color=S.MUTED, va="top", wrap=False)
+        fig.text(
+            0.035,
+            0.042,
+            "SOURCES   " + "   ·   ".join(lines),
+            fontsize=S.FS["micro"],
+            color=S.MUTED,
+            va="top",
+            wrap=False,
+        )
 
     if warnings:
-        fig.text(0.035, 0.026, "NOTES   " + "   ·   ".join(warnings[:3]),
-                 fontsize=S.FS["micro"], color=S.ACCENT, va="top")
+        fig.text(
+            0.035,
+            0.026,
+            "NOTES   " + "   ·   ".join(warnings[:3]),
+            fontsize=S.FS["micro"],
+            color=S.ACCENT,
+            va="top",
+        )
 
     if non_commercial:
-        fig.text(0.035, 0.010,
-                 "NON-COMMERCIAL LICENCE IN USE: " + ", ".join(sorted(set(non_commercial))),
-                 fontsize=S.FS["micro"], color=S.ACCENT, va="top", weight="bold")
+        fig.text(
+            0.035,
+            0.010,
+            "NON-COMMERCIAL LICENCE IN USE: " + ", ".join(sorted(set(non_commercial))),
+            fontsize=S.FS["micro"],
+            color=S.ACCENT,
+            va="top",
+            weight="bold",
+        )
 
-    fig.text(0.965, 0.026, f"sce {__version__}  ·  {_git_sha()}  ·  {aoi.epsg}",
-             fontsize=S.FS["micro"], color=S.MUTED, ha="right", va="top",
-             family="monospace")
+    fig.text(
+        0.965,
+        0.026,
+        f"sce {__version__}  ·  {_git_sha()}  ·  {aoi.epsg}",
+        fontsize=S.FS["micro"],
+        color=S.MUTED,
+        ha="right",
+        va="top",
+        family="monospace",
+    )

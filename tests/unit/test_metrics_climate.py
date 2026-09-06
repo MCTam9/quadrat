@@ -16,7 +16,7 @@ import math
 import pytest
 from pyproj import Transformer
 
-from sce.aoi import WGS84, AOI
+from sce.aoi import AOI, WGS84
 from sce.metrics.climate import REQUIRED_KEYS, climate_metrics
 from sce.providers.climate_openmeteo import OpenMeteoProvider
 from sce.types import LayerResult
@@ -105,10 +105,12 @@ def test_prevailing_wind_from_known_dominant_bin():
     aoi = _aoi()
     # 4 bins of 90 degrees each: N=0, E=90, S=180, W=270. Bin index 1 (E)
     # dominates with 0.6 of the total mass.
-    data = _full_provider_data(wind_rose={
-        "direction_labels": ["N", "E", "S", "W"],
-        "frequencies": [0.1, 0.6, 0.2, 0.1],
-    })
+    data = _full_provider_data(
+        wind_rose={
+            "direction_labels": ["N", "E", "S", "W"],
+            "frequencies": [0.1, 0.6, 0.2, 0.1],
+        }
+    )
     result = climate_metrics(_layers(data), aoi)
     assert result["prevailing_wind_direction_deg"] == pytest.approx(90.0)
     assert result["prevailing_wind_frequency"] == pytest.approx(0.6)
@@ -117,15 +119,17 @@ def test_prevailing_wind_from_known_dominant_bin():
 def test_prevailing_wind_sums_speed_bins_per_direction():
     # frequencies may be direction x speed-bin rows (as the real wind rose
     # is); the dominant direction is the one with the largest row total.
-    data = _full_provider_data(wind_rose={
-        "direction_labels": ["N", "E", "S", "W"],
-        "frequencies": [
-            [0.02, 0.03],  # N total 0.05
-            [0.10, 0.05],  # E total 0.15
-            [0.30, 0.30],  # S total 0.60 -- dominant
-            [0.10, 0.10],  # W total 0.20
-        ],
-    })
+    data = _full_provider_data(
+        wind_rose={
+            "direction_labels": ["N", "E", "S", "W"],
+            "frequencies": [
+                [0.02, 0.03],  # N total 0.05
+                [0.10, 0.05],  # E total 0.15
+                [0.30, 0.30],  # S total 0.60 -- dominant
+                [0.10, 0.10],  # W total 0.20
+            ],
+        }
+    )
     result = climate_metrics(_layers(data), _aoi())
     assert result["prevailing_wind_direction_deg"] == pytest.approx(180.0)
     assert result["prevailing_wind_frequency"] == pytest.approx(0.60)

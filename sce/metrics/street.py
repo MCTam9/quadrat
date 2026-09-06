@@ -61,11 +61,7 @@ def _bearing_histogram(graph: nx.MultiDiGraph, num_bins: int = NUM_BINS) -> tupl
     """
     xs = nx.get_node_attributes(graph, "x")
     ys = nx.get_node_attributes(graph, "y")
-    bearings = [
-        _planar_bearing(xs[u], ys[u], xs[v], ys[v])
-        for u, v, k in graph.edges(keys=True)
-        if u != v
-    ]
+    bearings = [_planar_bearing(xs[u], ys[u], xs[v], ys[v]) for u, v, k in graph.edges(keys=True) if u != v]
     bearings_arr = np.array(bearings, dtype=float)
 
     num_split_bins = num_bins * 2
@@ -114,7 +110,7 @@ def street_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
         rebuild_graph=False,
         dead_ends=False,
     )
-    n_intersections = int(len(consolidated))
+    n_intersections = len(consolidated)
     result["intersection_count"] = n_intersections
     result["intersection_density_km2"] = n_intersections / area_km2 if area_km2 else None
 

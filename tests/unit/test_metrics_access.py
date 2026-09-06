@@ -16,6 +16,7 @@ ratio of 2/pi, independent of the grid spacing chosen.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import networkx as nx
@@ -75,7 +76,7 @@ def _line_graph(aoi: AOI, half_count: int, spacing: float) -> nx.MultiDiGraph:
     for i in range(-half_count, half_count + 1):
         g.add_node(i, x=cx + i * spacing, y=cy)
     ids = sorted(g.nodes)
-    for a, b in zip(ids, ids[1:]):
+    for a, b in itertools.pairwise(ids):
         g.add_edge(a, b, length=spacing)
         g.add_edge(b, a, length=spacing)
     return g

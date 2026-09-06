@@ -10,13 +10,12 @@ import pytest
 
 pytest.importorskip("sce.providers")
 
-from sce.registry import REGISTRY
-from sce.types import Provider
-
 # The layer vocabulary is defined once, in sce.cli, because the CLI has to
 # offer it as a choice anyway. Copying it here would mean a new layer passes its
 # own test while the command that fetches it has never heard of it.
 from sce.cli import LAYERS as _LAYER_TUPLE
+from sce.registry import REGISTRY
+from sce.types import Provider
 
 LAYERS = set(_LAYER_TUPLE)
 
@@ -60,9 +59,7 @@ def test_every_provider_declares_required_attributes(providers):
 def test_every_provider_overrides_available_and_fetch(providers):
     for p in providers:
         cls = type(p)
-        assert cls.available is not Provider.available, (
-            f"{cls.__name__} does not override available()"
-        )
+        assert cls.available is not Provider.available, f"{cls.__name__} does not override available()"
         assert cls.fetch is not Provider.fetch, f"{cls.__name__} does not override fetch()"
 
 
@@ -92,9 +89,7 @@ def test_every_provider_module_is_imported_by_the_package():
     import sce.providers as pkg
 
     on_disk = {
-        m.name
-        for m in pkgutil.iter_modules([str(Path(pkg.__file__).parent)])
-        if not m.name.startswith("_")
+        m.name for m in pkgutil.iter_modules([str(Path(pkg.__file__).parent)]) if not m.name.startswith("_")
     }
     imported = {name for name in on_disk if hasattr(pkg, name)}
     missing = sorted(on_disk - imported)

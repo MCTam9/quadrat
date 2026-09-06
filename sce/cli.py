@@ -86,19 +86,33 @@ def main() -> None:
 @main.command()
 @click.option("--coords", help="lon,lat in decimal degrees")
 @click.option("--geojson", type=click.Path(exists=True), help="WGS84 boundary instead of a point")
-@click.option("--radius", default=1500.0, show_default=True, help="metres; the AOI is a square of this half-width")
+@click.option(
+    "--radius", default=1500.0, show_default=True, help="metres; the AOI is a square of this half-width"
+)
 @click.option("--name", default="site", show_default=True)
 @click.option("--out", "outdir", default="out", show_default=True, type=click.Path())
 @click.option("--layer", "only", multiple=True, type=click.Choice(LAYERS), help="restrict to these layers")
 @click.option("--provider", "overrides", multiple=True, help="layer=provider_name to force one provider")
-@click.option("--dtm", type=click.Choice(["dsm", "fabdem"]), default="dsm", show_default=True,
-              help="fabdem is bare-earth but CC BY-NC-SA, so non-commercial only")
-@click.option("--export", "exports", multiple=True, type=click.Choice(["gpkg", "dxf", "json", "png", "3dm"]),
-              help="repeatable; the PDF sheet is always written")
+@click.option(
+    "--dtm",
+    type=click.Choice(["dsm", "fabdem"]),
+    default="dsm",
+    show_default=True,
+    help="fabdem is bare-earth but CC BY-NC-SA, so non-commercial only",
+)
+@click.option(
+    "--export",
+    "exports",
+    multiple=True,
+    type=click.Choice(["gpkg", "dxf", "json", "png", "3dm"]),
+    help="repeatable; the PDF sheet is always written",
+)
 @click.option("--force", is_flag=True, help="permit a radius above 5 km")
 @click.option("--no-sheet", is_flag=True, help="skip the PDF, useful when you only want data")
 @click.option("-v", "--verbose", is_flag=True)
-def report(coords, geojson, radius, name, outdir, only, overrides, dtm, exports, force, no_sheet, verbose) -> None:
+def report(
+    coords, geojson, radius, name, outdir, only, overrides, dtm, exports, force, no_sheet, verbose
+) -> None:
     """Build the site context report for one site."""
     _setup_logging(verbose)
     if radius > RADIUS_WARN_M and not force:
@@ -118,14 +132,20 @@ def report(coords, geojson, radius, name, outdir, only, overrides, dtm, exports,
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
 
-    click.echo(f"{aoi.name}: {aoi.centroid_lonlat[0]:.5f},{aoi.centroid_lonlat[1]:.5f} "
-               f"r={radius:.0f} m  {aoi.epsg}  {aoi.area_ha:.0f} ha", err=True)
+    click.echo(
+        f"{aoi.name}: {aoi.centroid_lonlat[0]:.5f},{aoi.centroid_lonlat[1]:.5f} "
+        f"r={radius:.0f} m  {aoi.epsg}  {aoi.area_ha:.0f} ha",
+        err=True,
+    )
 
     override = dict(o.split("=", 1) for o in overrides)
     if dtm == "fabdem":
         override["terrain"] = "fabdem"
-        click.secho("  FABDEM is CC BY-NC-SA 4.0: non-commercial use only. "
-                    "The licence is printed on the sheet.", fg="yellow", err=True)
+        click.secho(
+            "  FABDEM is CC BY-NC-SA 4.0: non-commercial use only. The licence is printed on the sheet.",
+            fg="yellow",
+            err=True,
+        )
 
     cache = Cache()
     layers = _fetch_layers(aoi, cache, list(only), override, allow_nc=(dtm == "fabdem"))

@@ -102,12 +102,12 @@ class FabdemTerrainProvider(Provider):
     rank = 20
     commercial_ok = False
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         # Cheap, no network: only true when the user has actually supplied
         # tiles, so the registry falls through to Copernicus cleanly otherwise.
         return _fabdem_dir() is not None
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001, ARG002
+    def fetch(self, aoi, cache) -> LayerResult:
         tile_dir = _fabdem_dir()
         if tile_dir is None:
             raise RuntimeError(f"fabdem: SCE_FABDEM_DIR is not set or not a directory. {DOWNLOAD_HELP}")

@@ -23,7 +23,7 @@ LOW_COVERAGE_THRESHOLD = 0.5
 OPTIONAL_LAYERS = {"constraints"}
 
 
-def assess(layers: dict[str, LayerResult | None], aoi) -> dict[str, Any]:  # noqa: ANN001
+def assess(layers: dict[str, LayerResult | None], aoi) -> dict[str, Any]:
     """Judge sufficiency of a fetched layer set for one AOI.
 
     Returns `{"coverage": {layer: 0..1|None}, "degraded": bool, "warnings": [str]}`.
@@ -52,14 +52,11 @@ def assess(layers: dict[str, LayerResult | None], aoi) -> dict[str, Any]:  # noq
                 "treat derived numbers as indicative, not precise."
             )
 
-        if result.gdf is not None and result.raster is None:
-            if len(result.gdf) == 0:
-                degraded = True
-                warnings.append(f"{layer}: {result.provider} returned zero features for this AOI.")
+        if result.gdf is not None and result.raster is None and len(result.gdf) == 0:
+            degraded = True
+            warnings.append(f"{layer}: {result.provider} returned zero features for this AOI.")
 
-        for note in result.notes:
-            if "fell back after" in note:
-                warnings.append(f"{layer}: {note}")
+        warnings.extend(f"{layer}: {note}" for note in result.notes if "fell back after" in note)
 
     if layers.get("landcover") is not None and layers.get("landuse") is None:
         warnings.append(
@@ -68,15 +65,12 @@ def assess(layers: dict[str, LayerResult | None], aoi) -> dict[str, Any]:  # noq
     elif _low_osm_landuse(layers.get("landuse")):
         pct = layers["landuse"].coverage or 0.0
         warnings.append(
-            f"OSM landuse covers {pct:.0%} of this AOI; land cover shown from ESA WorldCover where gaps exist."
+            f"OSM landuse covers {pct:.0%} of this AOI; "
+            "land cover shown from ESA WorldCover where gaps exist."
         )
 
     return {"coverage": coverage, "degraded": degraded, "warnings": warnings}
 
 
 def _low_osm_landuse(landuse: LayerResult | None) -> bool:
-    return (
-        landuse is not None
-        and landuse.coverage is not None
-        and landuse.coverage < LOW_COVERAGE_THRESHOLD
-    )
+    return landuse is not None and landuse.coverage is not None and landuse.coverage < LOW_COVERAGE_THRESHOLD

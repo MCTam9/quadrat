@@ -82,10 +82,10 @@ class WorldCoverProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         w, s, e, n = aoi.bbox_wgs84
         lat0, lon0 = _tile_origin(s, w)
         lat1, lon1 = _tile_origin(n, e)
@@ -97,9 +97,7 @@ class WorldCoverProvider(Provider):
             for lat in range(lat0, lat1 + 1, TILE_SIZE_DEG):
                 for lon in range(lon0, lon1 + 1, TILE_SIZE_DEG):
                     url = _tile_url(lat, lon)
-                    key = cache.key(
-                        "esa-worldcover", url, round(w, 5), round(s, 5), round(e, 5), round(n, 5)
-                    )
+                    key = cache.key("esa-worldcover", url, round(w, 5), round(s, 5), round(e, 5), round(n, 5))
                     producer = self._make_producer(url, w, s, e, n, lat, lon)
                     blob, _meta = cache.get_bytes(key, ".tif", producer)
                     memfile = MemoryFile(blob)
@@ -169,7 +167,10 @@ class WorldCoverProvider(Provider):
                 "nodata": 0,
                 "res": (RESOLUTION_M, RESOLUTION_M),
             },
-            data={"class_fractions": fractions, "class_colours": {CLASSES[k]: v for k, v in CLASS_COLOURS.items()}},
+            data={
+                "class_fractions": fractions,
+                "class_colours": {CLASSES[k]: v for k, v in CLASS_COLOURS.items()},
+            },
             sources=[source],
             coverage=1.0 - fractions.get("Unclassified/no data", 0.0),
             degraded=False,
@@ -184,13 +185,17 @@ class WorldCoverProvider(Provider):
         def _producer() -> tuple[bytes, dict]:
             remote = f"/vsicurl/{url}"
             with rasterio.open(remote) as src:
-                win = from_bounds(
-                    max(w, lon) - _PAD_DEG,
-                    max(s, lat) - _PAD_DEG,
-                    min(e, lon + TILE_SIZE_DEG) + _PAD_DEG,
-                    min(n, lat + TILE_SIZE_DEG) + _PAD_DEG,
-                    transform=src.transform,
-                ).round_lengths().round_offsets()
+                win = (
+                    from_bounds(
+                        max(w, lon) - _PAD_DEG,
+                        max(s, lat) - _PAD_DEG,
+                        min(e, lon + TILE_SIZE_DEG) + _PAD_DEG,
+                        min(n, lat + TILE_SIZE_DEG) + _PAD_DEG,
+                        transform=src.transform,
+                    )
+                    .round_lengths()
+                    .round_offsets()
+                )
                 arr = src.read(1, window=win, boundless=True, fill_value=0)
                 transform = src.window_transform(win)
                 profile = src.profile.copy()

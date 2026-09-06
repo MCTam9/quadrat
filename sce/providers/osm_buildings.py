@@ -24,17 +24,17 @@ class OsmBuildingsProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         ox.settings.cache_folder = str(cache.root / "osmnx")
         ox.settings.use_cache = True
         (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
 
         try:
             gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags={"building": True})
-        except Exception as exc:  # noqa: BLE001 - registry falls through on raise
+        except Exception as exc:
             raise RuntimeError(f"osm_buildings: Overpass query failed: {exc}") from exc
 
         if gdf is None or len(gdf) == 0:
@@ -48,7 +48,7 @@ class OsmBuildingsProvider(Provider):
         levels_col = (
             gdf["building:levels"] if "building:levels" in gdf.columns else pd.Series(None, index=gdf.index)
         )
-        parsed = [height_and_source(h, lv) for h, lv in zip(height_col, levels_col)]
+        parsed = [height_and_source(h, lv) for h, lv in zip(height_col, levels_col, strict=False)]
         gdf["height_m"] = [p[0] for p in parsed]
         gdf["height_source"] = [p[1] for p in parsed]
 

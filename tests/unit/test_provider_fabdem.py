@@ -7,6 +7,8 @@ sce/providers/terrain_fabdem.py.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 import rasterio
@@ -53,14 +55,14 @@ def test_available_is_false_when_dir_does_not_exist(monkeypatch, tmp_path):
 def test_fetch_without_env_var_raises_actionable_error(monkeypatch):
     monkeypatch.delenv("SCE_FABDEM_DIR", raising=False)
     provider = FabdemTerrainProvider()
-    with pytest.raises(RuntimeError, match="SCE_FABDEM_DIR"):
+    with pytest.raises(RuntimeError, match=re.escape("SCE_FABDEM_DIR")):
         provider.fetch(_aoi(), cache=None)
 
 
 def test_fetch_with_empty_dir_names_the_missing_tile(monkeypatch, tmp_path):
     monkeypatch.setenv("SCE_FABDEM_DIR", str(tmp_path))
     provider = FabdemTerrainProvider()
-    with pytest.raises(RuntimeError, match="N51E000_FABDEM_V1-2.tif"):
+    with pytest.raises(RuntimeError, match=re.escape("N51E000_FABDEM_V1-2.tif")):
         provider.fetch(_aoi(), cache=None)
 
 
@@ -71,8 +73,15 @@ def _write_fake_tile(path, lat: int, lon: int) -> None:
     xs = np.arange(n)
     array = np.tile(xs.astype(np.float32), (n, 1))
     with rasterio.open(
-        path, "w", driver="GTiff", height=n, width=n, count=1, dtype="float32",
-        crs="EPSG:4326", transform=transform,
+        path,
+        "w",
+        driver="GTiff",
+        height=n,
+        width=n,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
     ) as dst:
         dst.write(array, 1)
 

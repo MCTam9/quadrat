@@ -85,9 +85,15 @@ def terrain_raster(aoi: AOI) -> dict:
 def layers(aoi, buildings_gdf, streets_gdf, landuse_gdf, terrain_raster) -> dict[str, LayerResult]:
     src = Source(name="synthetic-osm", url="https://example.invalid", licence="ODbL")
     return {
-        "buildings": LayerResult(layer="buildings", provider="synthetic", gdf=buildings_gdf, sources=[src], coverage=1.0),
-        "streets": LayerResult(layer="streets", provider="synthetic", gdf=streets_gdf, sources=[src], coverage=1.0),
-        "landuse": LayerResult(layer="landuse", provider="synthetic", gdf=landuse_gdf, sources=[src], coverage=0.8),
+        "buildings": LayerResult(
+            layer="buildings", provider="synthetic", gdf=buildings_gdf, sources=[src], coverage=1.0
+        ),
+        "streets": LayerResult(
+            layer="streets", provider="synthetic", gdf=streets_gdf, sources=[src], coverage=1.0
+        ),
+        "landuse": LayerResult(
+            layer="landuse", provider="synthetic", gdf=landuse_gdf, sources=[src], coverage=0.8
+        ),
         "terrain": LayerResult(
             layer="terrain",
             provider="synthetic",
@@ -196,7 +202,14 @@ def test_write_dxf_layers_and_counts(tmp_path, aoi, layers):
 
     doc = ezdxf.readfile(out)
     layer_names = {layer.dxf.name for layer in doc.layers}
-    for expected in ("SITE-BOUNDARY", "BLDG-FOOTPRINT", "ROAD-CENTRELINE", "LANDUSE", "TOPO-CONTOUR", "TEXT-NOTES"):
+    for expected in (
+        "SITE-BOUNDARY",
+        "BLDG-FOOTPRINT",
+        "ROAD-CENTRELINE",
+        "LANDUSE",
+        "TOPO-CONTOUR",
+        "TEXT-NOTES",
+    ):
         assert expected in layer_names
 
     msp = doc.modelspace()
@@ -271,9 +284,13 @@ def test_dxf_no_terrain_no_crash(tmp_path, aoi, buildings_gdf):
 
 
 def test_write_dossier(tmp_path, aoi, layers, metrics):
-    out = write_dossier(tmp_path / "dossier.json", aoi, layers, metrics,
-                        assessment={"coverage": {"landuse": 0.12}, "degraded": True,
-                                    "warnings": ["low coverage on landuse"]})
+    out = write_dossier(
+        tmp_path / "dossier.json",
+        aoi,
+        layers,
+        metrics,
+        assessment={"coverage": {"landuse": 0.12}, "degraded": True, "warnings": ["low coverage on landuse"]},
+    )
     payload = json.loads(out.read_text())
     assert payload["schema_version"] == 1
     assert payload["aoi"]["crs"] == aoi.epsg

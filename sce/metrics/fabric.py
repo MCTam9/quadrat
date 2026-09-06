@@ -43,7 +43,7 @@ def _valid_union_area(geoms) -> tuple[float, BaseGeometry | None]:
     return float(union.area), union
 
 
-def _as_polygons(geom):  # noqa: ANN001, ANN202
+def _as_polygons(geom):
     """Flatten whatever `make_valid` returned into plain polygons.
 
     `make_valid` may hand back a MultiPolygon or a GeometryCollection, neither
@@ -63,7 +63,7 @@ def _as_polygons(geom):  # noqa: ANN001, ANN202
     return []
 
 
-def _block_segments(streets_layer, graph):  # noqa: ANN001, ANN202
+def _block_segments(streets_layer, graph):
     """Line segments to polygonise into blocks.
 
     Uses the provider's edge geometry when present, falling back to straight
@@ -80,11 +80,7 @@ def _block_segments(streets_layer, graph):  # noqa: ANN001, ANN202
     undirected = nx.Graph(graph.to_undirected())
     xs = nx.get_node_attributes(undirected, "x")
     ys = nx.get_node_attributes(undirected, "y")
-    pairs = [
-        [(xs[u], ys[u]), (xs[v], ys[v])]
-        for u, v in undirected.edges()
-        if u in xs and v in ys
-    ]
+    pairs = [[(xs[u], ys[u]), (xs[v], ys[v])] for u, v in undirected.edges() if u in xs and v in ys]
     return [LineString(pts) for pts in pairs if pts[0] != pts[1]]
 
 

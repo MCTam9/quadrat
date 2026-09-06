@@ -75,17 +75,17 @@ class OsmLanduseProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         ox.settings.cache_folder = str(cache.root / "osmnx")
         ox.settings.use_cache = True
         (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
 
         try:
             gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags=TAGS)
-        except Exception as exc:  # noqa: BLE001 - registry falls through on raise
+        except Exception as exc:
             raise RuntimeError(f"osm_landuse: Overpass query failed: {exc}") from exc
 
         if gdf is None or len(gdf) == 0:
@@ -112,15 +112,21 @@ class OsmLanduseProvider(Provider):
             url="https://www.openstreetmap.org/copyright",
             licence="ODbL 1.0",
             licence_url="https://opendatacommons.org/licenses/odbl/1-0/",
-            note="Land-use polygons queried with osmnx features_from_polygon over landuse/leisure/natural tags",
+            note=(
+                "Land-use polygons queried with osmnx features_from_polygon over landuse/leisure/natural tags"
+            ),
             commercial_ok=True,
         )
 
         degraded = coverage < 0.5
-        notes = [] if not degraded else [
-            f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
-            "the remainder is genuinely unmapped, not implied to be any particular class"
-        ]
+        notes = (
+            []
+            if not degraded
+            else [
+                f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
+                "the remainder is genuinely unmapped, not implied to be any particular class"
+            ]
+        )
 
         return LayerResult(
             layer=self.layer,

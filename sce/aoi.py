@@ -56,8 +56,7 @@ def utm_crs_for(lon: float, lat: float) -> CRS:
 def laea_crs_for(lon: float, lat: float) -> CRS:
     """A centroid-centred Lambert Azimuthal Equal Area CRS, in metres."""
     return CRS.from_proj4(
-        f"+proj=laea +lat_0={lat:.8f} +lon_0={lon:.8f} "
-        "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+        f"+proj=laea +lat_0={lat:.8f} +lon_0={lon:.8f} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
     )
 
 

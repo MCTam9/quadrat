@@ -51,8 +51,7 @@ def test_the_sun_crosses_due_south_at_its_highest(name, lat, lon):
     before = float(arc.azimuth[peak - 1])
     after = float(arc.azimuth[peak + 1])
     assert before < 180.0 < after, (
-        f"{name}: sun does not cross due south at its highest "
-        f"(azimuth went {before:.1f} -> {after:.1f})"
+        f"{name}: sun does not cross due south at its highest (azimuth went {before:.1f} -> {after:.1f})"
     )
 
 

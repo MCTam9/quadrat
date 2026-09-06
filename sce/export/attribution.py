@@ -16,7 +16,7 @@ def _is_odbl(licence: str) -> bool:
     return any(marker in licence.lower() for marker in _ODBL_MARKERS)
 
 
-def generate_attribution(registry, path: str | Path) -> Path:  # noqa: ANN001
+def generate_attribution(registry, path: str | Path) -> Path:
     """Walk `registry.providers()` and write a licence-grouped ATTRIBUTION.md."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

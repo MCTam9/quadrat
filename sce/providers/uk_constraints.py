@@ -37,12 +37,12 @@ class UkConstraintsProvider(Provider):
     rank = 10
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         lon, lat = aoi.centroid_lonlat
         w, s, e, n = GB_BBOX
         return w <= lon <= e and s <= lat <= n
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         w, s, e, n = aoi.bbox_wgs84
         wkt = f"POLYGON(({w} {s}, {e} {s}, {e} {n}, {w} {n}, {w} {s}))"
 

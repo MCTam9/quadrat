@@ -13,7 +13,7 @@ from typing import Any
 
 from pyproj import Transformer
 
-from ..aoi import WGS84, AOI, assert_metric_crs
+from ..aoi import AOI, WGS84, assert_metric_crs
 from ..types import LayerResult
 
 REQUIRED_KEYS = (

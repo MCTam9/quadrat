@@ -38,11 +38,38 @@ include = ["sce*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Live tests are opt-in. Without this, a plain `pytest` silently starts hitting
+# the network, which is slow, flaky and exactly what the offline suite exists to
+# avoid. Run them deliberately with `pytest -m live`.
+addopts = "-m 'not live'"
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
-  "live: allow real network access; runs against live APIs, not CI",
+    "live: hits real network interfaces; deselected by default, run weekly in CI",
+    "slow: takes minutes rather than seconds",
+]
+[tool.ruff]
+# 110 rather than the more common 100: the lines that exceed 100 here are almost
+# all type annotations and click decorators, and wrapping those makes them
+# harder to read, not easier. Anything genuinely long enough to hurt is still
+# caught.
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+# Selected explicitly so CI is deterministic across ruff releases rather than
+# inheriting whatever the current default happens to be.
+select = ["E", "F", "I", "UP", "B", "SIM", "PERF", "DTZ", "RUF"]
+ignore = [
+    # Long strings wrapped across lines inside a list are the normal way to
+    # write a readable multi-sentence note, and this codebase does it
+    # deliberately in every provider's `notes`.
+    "ISC001",
+    "ISC003",
+    "ISC004",
+    # Assert is how tests express intent.
+    "S101",
 ]
 
-[tool.ruff]
-line-length = 100
-target-version = "py312"
+[tool.ruff.lint.per-file-ignores]
+# Tests unpack fixtures for readability even where one half goes unused.
+"tests/*" = ["RUF059", "F841"]

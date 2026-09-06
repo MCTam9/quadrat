@@ -34,7 +34,9 @@ jobs:
 
       - name: Run live tests against real APIs
         id: run_live
-        run: pytest -m live -q
+        run: pytest -m live -q -rs
+        # -rs so the summary names anything skipped. A skip here means a host
+        # throttled us; a failure means an interface actually moved.
 
       - name: File or update tracking issue on failure
         if: steps.run_live.outcome == 'failure'

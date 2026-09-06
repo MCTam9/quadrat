@@ -6,8 +6,9 @@ sheet is an editorial judgement, not a layout one, and it changes more often.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -18,13 +19,12 @@ class Row:
     is_section: bool = False
 
 
-COMPASS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-           "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+COMPASS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
 
 
 def _compass(degrees: float) -> str:
     """A bearing an architect can act on. "NW 315" beats "315"."""
-    return f"{COMPASS[int(round(degrees / 22.5)) % 16]} {degrees:.0f}°"
+    return f"{COMPASS[round(degrees / 22.5) % 16]} {degrees:.0f}°"
 
 
 def _fmt(value: Any, spec: str = "{:.2f}", suffix: str = "") -> str:
@@ -78,7 +78,9 @@ NOTE_KEYS: dict[str, Callable[[dict], str]] = {
     "fsi": lambda m: (
         f"height coverage {m.get('fsi_coverage', 0):.0%}, below 40% threshold"
         if m.get("fsi") is None
-        else ("GHSL-derived (OSM height coverage too sparse)" if "GHSL" in str(m.get("fsi_source", "")) else "")
+        else (
+            "GHSL-derived (OSM height coverage too sparse)" if "GHSL" in str(m.get("fsi_source", "")) else ""
+        )
     ),
 }
 

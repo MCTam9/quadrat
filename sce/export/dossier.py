@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +45,7 @@ def _dedup_sources(layers: dict[str, LayerResult]) -> list[dict[str, Any]]:
     return sorted(seen.values(), key=lambda d: (d["name"], d["licence"], d["url"]))
 
 
-def _warnings_of(assessment) -> list[str]:  # noqa: ANN001
+def _warnings_of(assessment) -> list[str]:
     if assessment is None:
         return []
     if isinstance(assessment, dict):
@@ -53,13 +53,13 @@ def _warnings_of(assessment) -> list[str]:  # noqa: ANN001
     return list(assessment)
 
 
-def _coverage_of(assessment) -> dict:  # noqa: ANN001
+def _coverage_of(assessment) -> dict:
     return dict(assessment.get("coverage") or {}) if isinstance(assessment, dict) else {}
 
 
 def write_dossier(
     path: str | Path,
-    aoi,  # noqa: ANN001
+    aoi,
     layers: dict[str, LayerResult],
     metrics: dict[str, dict],
     assessment: dict | list[str] | None = None,
@@ -71,7 +71,7 @@ def write_dossier(
         "schema_version": SCHEMA_VERSION,
         "tool_version": __version__,
         "git_sha": _git_sha(),
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "aoi": aoi.provenance(),
         "metrics": {k: metrics[k] for k in sorted(metrics)},
         "layers": {k: layers[k].provenance() for k in sorted(layers) if layers[k] is not None},

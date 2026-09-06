@@ -70,7 +70,7 @@ def test_from_point_polar_and_boundary_use_laea_not_utm():
 try:
     _metrics_mod = importlib.import_module("sce.metrics")
     METRICS = getattr(_metrics_mod, "METRICS", None)
-except Exception:  # noqa: BLE001 - module may not exist or be mid-write
+except Exception:
     METRICS = None
 
 _METRIC_ITEMS = list(METRICS.items()) if METRICS else []

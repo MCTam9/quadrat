@@ -16,20 +16,21 @@ so the columns are comparable, and stops.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.gridspec import GridSpec  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 
-from .. import __version__  # noqa: E402
-from ..aoi import AOI  # noqa: E402
-from . import figures as F  # noqa: E402
-from . import style as S  # noqa: E402
-from .sheet import _git_sha  # noqa: E402
+from .. import __version__
+from ..aoi import AOI
+from . import figures as F
+from . import style as S
+from .sheet import _git_sha
 
 Bundle = Sequence[tuple[AOI, dict[str, Any], dict[str, Any]]]
 
@@ -81,9 +82,18 @@ def render_compare(path: Path | str, bundle: Bundle) -> Path:
     panel_w_in = (right - left) * fig_w_in / (n + (n - 1) * wspace)
     avail_in = (top - bottom) * fig_h_in
     drawing_share = min(panel_w_in / avail_in, 0.72)
-    gs = GridSpec(2, n, figure=fig, left=left, right=right, top=top, bottom=bottom,
-                  height_ratios=[drawing_share, 1.0 - drawing_share],
-                  wspace=wspace, hspace=hspace)
+    gs = GridSpec(
+        2,
+        n,
+        figure=fig,
+        left=left,
+        right=right,
+        top=top,
+        bottom=bottom,
+        height_ratios=[drawing_share, 1.0 - drawing_share],
+        wspace=wspace,
+        hspace=hspace,
+    )
 
     # One scale for every site, taken from the largest AOI, so the drawings are
     # directly comparable rather than each fitted to its own frame.
@@ -143,16 +153,25 @@ def _comparison_table(ax, sites: list, span: float) -> None:
 
     for col, (aoi, _, _) in enumerate(sites):
         x = label_w + col * col_w + col_w / 2
-        ax.text(x, -0.05, " ".join(aoi.name.upper()), fontsize=S.FS["small"],
-                color=S.INK, ha="center", va="baseline", weight="bold")
+        ax.text(
+            x,
+            -0.05,
+            " ".join(aoi.name.upper()),
+            fontsize=S.FS["small"],
+            color=S.INK,
+            ha="center",
+            va="baseline",
+            weight="bold",
+        )
     ax.plot([0, 1], [0.25, 0.25], color=S.RULE, lw=S.LW["thin"], clip_on=False)
 
     for i, (label, group, key, spec, unit, _) in enumerate(rows):
         y = i + 1.15
         ax.text(0, y, label, fontsize=S.FS["small"], color=S.INK, va="baseline")
         if unit:
-            ax.text(label_w - 0.012, y, unit, fontsize=S.FS["micro"], color=S.MUTED,
-                    va="baseline", ha="right")
+            ax.text(
+                label_w - 0.012, y, unit, fontsize=S.FS["micro"], color=S.MUTED, va="baseline", ha="right"
+            )
 
         values = [_value(m, group, key) for _, _, m in sites]
         present = [v for v in values if v is not None]
@@ -161,42 +180,90 @@ def _comparison_table(ax, sites: list, span: float) -> None:
         for col, value in enumerate(values):
             x0 = label_w + col * col_w
             if value is None:
-                ax.text(x0 + col_w - 0.015, y, "—", fontsize=S.FS["small"],
-                        color=S.MUTED, va="baseline", ha="right", family="monospace")
+                ax.text(
+                    x0 + col_w - 0.015,
+                    y,
+                    "—",
+                    fontsize=S.FS["small"],
+                    color=S.MUTED,
+                    va="baseline",
+                    ha="right",
+                    family="monospace",
+                )
                 continue
             if peak > 0:
                 frac = abs(value) / peak
-                ax.add_patch(plt.Rectangle((x0 + 0.004, y - 0.28), (col_w - 0.02) * frac, 0.62,
-                                           facecolor=S.FAINT, edgecolor="none", zorder=0))
-            ax.text(x0 + col_w - 0.015, y, spec.format(value), fontsize=S.FS["small"],
-                    color=S.INK, va="baseline", ha="right", family="monospace", zorder=2)
+                ax.add_patch(
+                    plt.Rectangle(
+                        (x0 + 0.004, y - 0.28),
+                        (col_w - 0.02) * frac,
+                        0.62,
+                        facecolor=S.FAINT,
+                        edgecolor="none",
+                        zorder=0,
+                    )
+                )
+            ax.text(
+                x0 + col_w - 0.015,
+                y,
+                spec.format(value),
+                fontsize=S.FS["small"],
+                color=S.INK,
+                va="baseline",
+                ha="right",
+                family="monospace",
+                zorder=2,
+            )
 
         if i % 2 == 1:
             ax.plot([0, 1], [y + 0.42, y + 0.42], color=S.FAINT, lw=S.LW["hair"], clip_on=False)
 
 
 def _header(fig, sites: list, span: float) -> None:
-    fig.text(0.035, 0.955, "SITE COMPARISON", fontsize=S.FS["title"], color=S.INK,
-             weight="bold", va="top")
+    fig.text(0.035, 0.955, "SITE COMPARISON", fontsize=S.FS["title"], color=S.INK, weight="bold", va="top")
     names = "   ·   ".join(a.name for a, _, _ in sites)
     fig.text(0.035, 0.922, names, fontsize=S.FS["small"], color=S.MUTED, va="top")
-    fig.text(0.965, 0.955, f"all drawings at one scale  ·  {span / 1000:.1f} km across",
-             fontsize=S.FS["small"], color=S.INK, ha="right", va="top")
-    fig.text(0.965, 0.928,
-             "normalised for comparison; deliberately not scored",
-             fontsize=S.FS["micro"], color=S.ACCENT, ha="right", va="top")
+    fig.text(
+        0.965,
+        0.955,
+        f"all drawings at one scale  ·  {span / 1000:.1f} km across",
+        fontsize=S.FS["small"],
+        color=S.INK,
+        ha="right",
+        va="top",
+    )
+    fig.text(
+        0.965,
+        0.928,
+        "normalised for comparison; deliberately not scored",
+        fontsize=S.FS["micro"],
+        color=S.ACCENT,
+        ha="right",
+        va="top",
+    )
     S.rule_line(fig, 0.908, lw=S.LW["line"])
 
 
 def _footer(fig, sites: list) -> None:
     S.rule_line(fig, 0.055, lw=S.LW["thin"])
-    fig.text(0.035, 0.040,
-             "Bars are scaled within each row only, never across rows, and there is no total. "
-             "Weighting these metrics against one another is the client's judgement, not the tool's.",
-             fontsize=S.FS["micro"], color=S.MUTED, va="top")
+    fig.text(
+        0.035,
+        0.040,
+        "Bars are scaled within each row only, never across rows, and there is no total. "
+        "Weighting these metrics against one another is the client's judgement, not the tool's.",
+        fontsize=S.FS["micro"],
+        color=S.MUTED,
+        va="top",
+    )
     epsgs = "  ·  ".join(f"{a.name} {a.epsg}" for a, _, _ in sites)
-    fig.text(0.035, 0.024, epsgs, fontsize=S.FS["micro"], color=S.MUTED, va="top",
-             family="monospace")
-    fig.text(0.965, 0.040, f"sce {__version__}  ·  {_git_sha()}",
-             fontsize=S.FS["micro"], color=S.MUTED, ha="right", va="top",
-             family="monospace")
+    fig.text(0.035, 0.024, epsgs, fontsize=S.FS["micro"], color=S.MUTED, va="top", family="monospace")
+    fig.text(
+        0.965,
+        0.040,
+        f"sce {__version__}  ·  {_git_sha()}",
+        fontsize=S.FS["micro"],
+        color=S.MUTED,
+        ha="right",
+        va="top",
+        family="monospace",
+    )

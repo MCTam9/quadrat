@@ -53,9 +53,7 @@ def test_module_does_not_import_banned_packages(path: Path):
                 )
         elif isinstance(node, ast.ImportFrom) and node.module:
             root = node.module.split(".")[0]
-            assert root not in BANNED_IMPORTS, (
-                f"{path.relative_to(SCE_ROOT)} imports banned package {root!r}"
-            )
+            assert root not in BANNED_IMPORTS, f"{path.relative_to(SCE_ROOT)} imports banned package {root!r}"
 
 
 def _is_public_function(node: ast.AST) -> bool:

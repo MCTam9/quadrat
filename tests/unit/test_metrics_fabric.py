@@ -25,9 +25,7 @@ def test_gsi_uses_union_not_sum_of_overlapping_footprints():
     aoi = _aoi(radius=100.0)
     square_a = box(0, 0, 100, 100)
     square_b = box(50, 50, 150, 150)
-    gdf = gpd.GeoDataFrame(
-        {"height_m": [9.0, 9.0]}, geometry=[square_a, square_b], crs=aoi.crs
-    )
+    gdf = gpd.GeoDataFrame({"height_m": [9.0, 9.0]}, geometry=[square_a, square_b], crs=aoi.crs)
     buildings = LayerResult(layer="buildings", provider="synthetic", gdf=gdf, coverage=1.0)
     layers = {"buildings": buildings}
 
@@ -45,9 +43,7 @@ def test_gsi_uses_union_not_sum_of_overlapping_footprints():
 
 def test_fsi_none_below_coverage_threshold():
     aoi = _aoi()
-    gdf = gpd.GeoDataFrame(
-        {"height_m": [9.0]}, geometry=[box(0, 0, 10, 10)], crs=aoi.crs
-    )
+    gdf = gpd.GeoDataFrame({"height_m": [9.0]}, geometry=[box(0, 0, 10, 10)], crs=aoi.crs)
     buildings = LayerResult(layer="buildings", provider="synthetic", gdf=gdf, coverage=0.1)
     result = fabric_metrics({"buildings": buildings}, aoi)
     assert result["fsi"] is None
@@ -57,9 +53,7 @@ def test_fsi_none_below_coverage_threshold():
 
 def test_fsi_computed_above_coverage_threshold():
     aoi = _aoi()
-    gdf = gpd.GeoDataFrame(
-        {"height_m": [9.0]}, geometry=[box(0, 0, 10, 10)], crs=aoi.crs
-    )
+    gdf = gpd.GeoDataFrame({"height_m": [9.0]}, geometry=[box(0, 0, 10, 10)], crs=aoi.crs)
     buildings = LayerResult(layer="buildings", provider="synthetic", gdf=gdf, coverage=0.9)
     result = fabric_metrics({"buildings": buildings}, aoi)
     expected_fsi = (10 * 10 * (9.0 / 3.0)) / aoi.area_m2

@@ -98,7 +98,7 @@ def strip(ax, *, keep_frame: bool = False) -> None:
     """Remove the chart furniture. Most panels are drawings, not charts."""
     ax.set_xticks([])
     ax.set_yticks([])
-    for side, spine in ax.spines.items():
+    for spine in ax.spines.values():
         spine.set_visible(keep_frame)
         if keep_frame:
             spine.set_linewidth(LW["thin"])
@@ -114,20 +114,44 @@ def panel_title(ax, text: str, sub: str = "") -> None:
     at a different height and, on the tallest panel, collide with the header.
     """
     ax.set_title("")
-    ax.annotate(" ".join(text.upper()), xy=(0, 1), xycoords="axes fraction",
-                xytext=(0, 9), textcoords="offset points", fontsize=FS["small"],
-                color=INK, ha="left", va="bottom", weight="bold",
-                annotation_clip=False)
+    ax.annotate(
+        " ".join(text.upper()),
+        xy=(0, 1),
+        xycoords="axes fraction",
+        xytext=(0, 9),
+        textcoords="offset points",
+        fontsize=FS["small"],
+        color=INK,
+        ha="left",
+        va="bottom",
+        weight="bold",
+        annotation_clip=False,
+    )
     if sub:
-        ax.annotate(sub, xy=(1, 1), xycoords="axes fraction",
-                    xytext=(0, 9), textcoords="offset points", fontsize=FS["micro"],
-                    color=MUTED, ha="right", va="bottom", annotation_clip=False)
-    ax.annotate("", xy=(0, 1), xycoords="axes fraction", xytext=(0, 6),
-                textcoords="offset points", annotation_clip=False)
-    line = mpl.lines.Line2D([0, 1], [1, 1], transform=ax.transAxes, color=RULE,
-                            lw=LW["thin"], clip_on=False)
-    line.set_transform(ax.transAxes + mpl.transforms.ScaledTranslation(
-        0, 6 / 72.0, ax.figure.dpi_scale_trans))
+        ax.annotate(
+            sub,
+            xy=(1, 1),
+            xycoords="axes fraction",
+            xytext=(0, 9),
+            textcoords="offset points",
+            fontsize=FS["micro"],
+            color=MUTED,
+            ha="right",
+            va="bottom",
+            annotation_clip=False,
+        )
+    ax.annotate(
+        "",
+        xy=(0, 1),
+        xycoords="axes fraction",
+        xytext=(0, 6),
+        textcoords="offset points",
+        annotation_clip=False,
+    )
+    line = mpl.lines.Line2D([0, 1], [1, 1], transform=ax.transAxes, color=RULE, lw=LW["thin"], clip_on=False)
+    line.set_transform(
+        ax.transAxes + mpl.transforms.ScaledTranslation(0, 6 / 72.0, ax.figure.dpi_scale_trans)
+    )
     ax.add_line(line)
 
 
@@ -159,26 +183,42 @@ def scale_bar(ax, span_m: float, *, y: float = 0.045, x: float = 0.045) -> None:
     h = abs(y1 - y0) * (2.5 / 72.0) / max(axes_height_in, 1e-6)
 
     half = length / 2.0
-    ax.add_patch(mpl.patches.Rectangle((bx, by), half, h, facecolor=INK, edgecolor=INK,
-                                       lw=LW["hair"], zorder=20))
-    ax.add_patch(mpl.patches.Rectangle((bx + half, by), half, h, facecolor=PAPER,
-                                       edgecolor=INK, lw=LW["hair"], zorder=20))
+    ax.add_patch(
+        mpl.patches.Rectangle((bx, by), half, h, facecolor=INK, edgecolor=INK, lw=LW["hair"], zorder=20)
+    )
+    ax.add_patch(
+        mpl.patches.Rectangle(
+            (bx + half, by), half, h, facecolor=PAPER, edgecolor=INK, lw=LW["hair"], zorder=20
+        )
+    )
     label = f"{length:.0f} m" if length < 1000 else f"{length / 1000:.0f} km"
-    ax.text(bx, by + h * 1.8, "0", fontsize=FS["micro"], color=INK, ha="center",
-            va="bottom", zorder=20)
-    ax.text(bx + length, by + h * 1.8, label, fontsize=FS["micro"], color=INK,
-            ha="center", va="bottom", zorder=20)
+    ax.text(bx, by + h * 1.8, "0", fontsize=FS["micro"], color=INK, ha="center", va="bottom", zorder=20)
+    ax.text(
+        bx + length, by + h * 1.8, label, fontsize=FS["micro"], color=INK, ha="center", va="bottom", zorder=20
+    )
 
 
 def north_arrow(ax, *, x: float = 0.955, y: float = 0.06) -> None:
     """North is grid north in the sheet's metric CRS, which is what the drawing is in."""
     ax.annotate(
-        "", xy=(x, y + 0.055), xytext=(x, y), xycoords="axes fraction",
+        "",
+        xy=(x, y + 0.055),
+        xytext=(x, y),
+        xycoords="axes fraction",
         arrowprops=dict(arrowstyle="-|>", color=INK, lw=LW["line"], shrinkA=0, shrinkB=0),
         zorder=20,
     )
-    ax.text(x, y + 0.062, "N", transform=ax.transAxes, fontsize=FS["small"],
-            color=INK, ha="center", va="bottom", zorder=20)
+    ax.text(
+        x,
+        y + 0.062,
+        "N",
+        transform=ax.transAxes,
+        fontsize=FS["small"],
+        color=INK,
+        ha="center",
+        va="bottom",
+        zorder=20,
+    )
 
 
 def rule_line(fig, y: float, x0: float = 0.03, x1: float = 0.97, lw: float | None = None) -> None:

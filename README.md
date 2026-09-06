@@ -142,11 +142,23 @@ Pure pip on Python 3.12–3.14. No conda, no system GDAL.
 pytest
 ```
 
-234 tests, zero network. Metrics are checked against analytically known answers
+299 tests, zero network. Metrics are checked against analytically known answers
 rather than snapshots: a synthetic perfect grid must return orientation order
 exactly 1.0, two overlapping squares must produce the union area, a plane at
-exactly 1:20 must return 2.862°. A weekly job exercises the live interfaces so
-the coverage claims above are machine-checked rather than asserted.
+exactly 1:20 must return 2.862°, and on a perfect grid the ten-minute walking
+area is a diamond rather than a circle, so the reach ratio is exactly 2/π.
+
+```bash
+pytest -m live
+```
+
+A further 14 tests hit the real interfaces and are excluded from normal runs. A
+weekly job runs them so the coverage table above is machine-checked rather than
+asserted. They assert physical bounds, not fixed numbers: Riyadh must read as
+dry, London must need heating and Riyadh cooling, elevation must land in the
+right range, and UK constraint geometry must actually fall inside the requested
+site. They skip rather than fail when a host throttles the run, because a
+weekly job that cries wolf is one nobody reads.
 
 ## Licences
 

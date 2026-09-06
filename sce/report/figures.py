@@ -10,10 +10,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import numpy as np
 import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
+import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.colors import LightSource, ListedColormap, BoundaryNorm
+from matplotlib.colors import BoundaryNorm, LightSource, ListedColormap
 
 from ..aoi import AOI
 from . import style as S
@@ -85,16 +86,25 @@ def constraints_overlay(ax: Axes, layers: dict[str, Any]) -> None:
             continue
         colour = S.CONSTRAINT_COLOURS[i % len(S.CONSTRAINT_COLOURS)]
         dashes = S.CONSTRAINT_DASHES[i % len(S.CONSTRAINT_DASHES)]
-        subset.boundary.plot(ax=ax, color=colour, linewidth=S.LW["line"],
-                             linestyle=dashes, zorder=6)
-        handles.append(mlines.Line2D([], [], color=colour, lw=S.LW["line"],
-                                     linestyle=dashes,
-                                     label=str(name).replace("-", " ")))
+        subset.boundary.plot(ax=ax, color=colour, linewidth=S.LW["line"], linestyle=dashes, zorder=6)
+        handles.append(
+            mlines.Line2D(
+                [], [], color=colour, lw=S.LW["line"], linestyle=dashes, label=str(name).replace("-", " ")
+            )
+        )
     if handles:
-        ax.legend(handles=handles, loc="upper left", fontsize=S.FS["micro"],
-                  handlelength=2.2, borderpad=0.5, labelspacing=0.35,
-                  facecolor=S.PAPER, framealpha=0.85, frameon=True,
-                  edgecolor=S.RULE).set_zorder(30)
+        ax.legend(
+            handles=handles,
+            loc="upper left",
+            fontsize=S.FS["micro"],
+            handlelength=2.2,
+            borderpad=0.5,
+            labelspacing=0.35,
+            facecolor=S.PAPER,
+            framealpha=0.85,
+            frameon=True,
+            edgecolor=S.RULE,
+        ).set_zorder(30)
 
 
 def street_network(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
@@ -106,8 +116,9 @@ def street_network(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
         return
     gdf = st.gdf
     if "highway" in gdf.columns:
-        major = gdf[gdf["highway"].astype(str).str.contains(
-            "motorway|trunk|primary|secondary", case=False, na=False)]
+        major = gdf[
+            gdf["highway"].astype(str).str.contains("motorway|trunk|primary|secondary", case=False, na=False)
+        ]
         minor = gdf.drop(major.index)
         minor.plot(ax=ax, color=S.ROAD, linewidth=S.LW["hair"], zorder=2)
         major.plot(ax=ax, color=S.INK, linewidth=S.LW["line"], zorder=3)
@@ -133,15 +144,20 @@ def terrain_hillshade(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     ls = LightSource(azdeg=315, altdeg=45)
     shade = ls.hillshade(filled, vert_exag=2.0, dx=abs(res[0]), dy=abs(res[1]))
     minx, maxx, miny, maxy = _extent(aoi)
-    ax.imshow(shade, cmap="gray", extent=(minx, maxx, miny, maxy),
-              origin="upper", alpha=0.85, zorder=1)
+    ax.imshow(shade, cmap="gray", extent=(minx, maxx, miny, maxy), origin="upper", alpha=0.85, zorder=1)
 
     rng = float(np.nanmax(arr) - np.nanmin(arr))
     interval = _contour_interval(rng)
-    levels = np.arange(math.floor(np.nanmin(arr) / interval) * interval,
-                       np.nanmax(arr) + interval, interval)
-    cs = ax.contour(filled, levels=levels, colors=S.INK, linewidths=S.LW["hair"],
-                    extent=(minx, maxx, miny, maxy), origin="upper", zorder=2)
+    levels = np.arange(math.floor(np.nanmin(arr) / interval) * interval, np.nanmax(arr) + interval, interval)
+    cs = ax.contour(
+        filled,
+        levels=levels,
+        colors=S.INK,
+        linewidths=S.LW["hair"],
+        extent=(minx, maxx, miny, maxy),
+        origin="upper",
+        zorder=2,
+    )
     ax.clabel(cs, cs.levels[::2], fmt="%.0f", fontsize=S.FS["micro"], colors=S.INK)
     S.scale_bar(ax, maxx - minx)
 
@@ -170,8 +186,9 @@ def landcover(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     cmap = ListedColormap(colours)
     norm = BoundaryNorm(bounds, cmap.N)
     minx, maxx, miny, maxy = _extent(aoi)
-    ax.imshow(arr, cmap=cmap, norm=norm, extent=(minx, maxx, miny, maxy),
-              origin="upper", interpolation="nearest")
+    ax.imshow(
+        arr, cmap=cmap, norm=norm, extent=(minx, maxx, miny, maxy), origin="upper", interpolation="nearest"
+    )
 
 
 def orientation_rose(ax: Axes, metrics: dict[str, Any]) -> None:
@@ -186,13 +203,19 @@ def orientation_rose(ax: Axes, metrics: dict[str, Any]) -> None:
     width = 2 * np.pi / n
     theta = np.arange(n) * width
     counts = counts / counts.sum() if counts.sum() else counts
-    ax.bar(theta, counts, width=width * 0.92, bottom=0.0, color=S.INK,
-           edgecolor="none", align="edge")
+    ax.bar(theta, counts, width=width * 0.92, bottom=0.0, color=S.INK, edgecolor="none", align="edge")
     _polar_furniture(ax)
     phi = (metrics.get("street") or {}).get("orientation_order_phi")
     if phi is not None:
-        ax.text(0.5, -0.12, f"order $\\varphi$ = {phi:.2f}", transform=ax.transAxes,
-                ha="center", fontsize=S.FS["small"], color=S.MUTED)
+        ax.text(
+            0.5,
+            -0.12,
+            f"order $\\varphi$ = {phi:.2f}",
+            transform=ax.transAxes,
+            ha="center",
+            fontsize=S.FS["small"],
+            color=S.MUTED,
+        )
 
 
 def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
@@ -209,17 +232,32 @@ def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
     theta = np.arange(n_dir) * width
     greys = ["#e0ddd6", "#bdb8ad", "#918a7d", "#635c50", "#332f27"]
     bottom = np.zeros(n_dir)
-    labels = rose.get("speed_bin_labels") or rose.get("speed_labels") or [
-        f"band {i}" for i in range(freqs.shape[1])
-    ]
+    labels = (
+        rose.get("speed_bin_labels")
+        or rose.get("speed_labels")
+        or [f"band {i}" for i in range(freqs.shape[1])]
+    )
     for j in range(freqs.shape[1]):
-        ax.bar(theta, freqs[:, j], width=width * 0.92, bottom=bottom,
-               color=greys[j % len(greys)], edgecolor="none", align="edge",
-               label=labels[j])
+        ax.bar(
+            theta,
+            freqs[:, j],
+            width=width * 0.92,
+            bottom=bottom,
+            color=greys[j % len(greys)],
+            edgecolor="none",
+            align="edge",
+            label=labels[j],
+        )
         bottom += freqs[:, j]
     _polar_furniture(ax)
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.34), ncols=3,
-              fontsize=S.FS["micro"], handlelength=0.9, columnspacing=0.9)
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.34),
+        ncols=3,
+        fontsize=S.FS["micro"],
+        handlelength=0.9,
+        columnspacing=0.9,
+    )
 
 
 def _polar_furniture(ax: Axes) -> None:
@@ -244,19 +282,30 @@ def sun_path(ax: Axes, aoi: AOI) -> None:
     ax.set_xlim(-1.15, 1.15)
     ax.set_ylim(-1.15, 1.15)
 
-    for r, lbl in ((1.0, "0"), (np.tan(np.pi / 8), "45")):
-        ax.add_patch(__import__("matplotlib").patches.Circle(
-            (0, 0), r, fill=False, color=S.RULE, lw=S.LW["hair"]))
+    # The horizon (altitude 0) and the 45-degree altitude ring, which together
+    # give the reader a scale without a numeric axis.
+    for radius in (1.0, float(np.tan(np.pi / 8))):
+        ax.add_patch(mpatches.Circle((0, 0), radius, fill=False, color=S.RULE, lw=S.LW["hair"]))
     for az in range(0, 360, 30):
         a = math.radians(az)
         ax.plot([0, math.sin(a)], [0, math.cos(a)], color=S.FAINT, lw=S.LW["hair"], zorder=0)
     for az, lbl in ((0, "N"), (90, "E"), (180, "S"), (270, "W")):
         a = math.radians(az)
-        ax.text(1.09 * math.sin(a), 1.09 * math.cos(a), lbl, ha="center", va="center",
-                fontsize=S.FS["micro"], color=S.MUTED)
+        ax.text(
+            1.09 * math.sin(a),
+            1.09 * math.cos(a),
+            lbl,
+            ha="center",
+            va="center",
+            fontsize=S.FS["micro"],
+            color=S.MUTED,
+        )
 
-    styles = {"21 Jun": (S.LW["line"], S.ACCENT), "21 Mar / 23 Sep": (S.LW["thin"], S.INK),
-              "21 Dec": (S.LW["thin"], S.MUTED)}
+    styles = {
+        "21 Jun": (S.LW["line"], S.ACCENT),
+        "21 Mar / 23 Sep": (S.LW["thin"], S.INK),
+        "21 Dec": (S.LW["thin"], S.MUTED),
+    }
     for label, pos in key_arcs(lat, lon).items():
         m = pos.above_horizon
         if not m.any():
@@ -264,8 +313,9 @@ def sun_path(ax: Axes, aoi: AOI) -> None:
         x, y = stereographic(pos.azimuth[m], pos.altitude[m])
         lw, colour = styles.get(label, (S.LW["thin"], S.INK))
         ax.plot(x, y, color=colour, lw=lw, label=label, solid_capstyle="round")
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.16), ncols=1,
-              fontsize=S.FS["micro"], handlelength=1.2)
+    ax.legend(
+        loc="lower center", bbox_to_anchor=(0.5, -0.16), ncols=1, fontsize=S.FS["micro"], handlelength=1.2
+    )
 
 
 def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
@@ -299,13 +349,26 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
             if val <= 0:
                 continue
             colour = palette.get(key, "#dddddd")
-            ax.barh(i, val, left=left, height=0.5, color=colour,
-                    edgecolor=S.PAPER, linewidth=0.6,
-                    alpha=0.45 if degraded and key != "unmapped" else 1.0)
+            ax.barh(
+                i,
+                val,
+                left=left,
+                height=0.5,
+                color=colour,
+                edgecolor=S.PAPER,
+                linewidth=0.6,
+                alpha=0.45 if degraded and key != "unmapped" else 1.0,
+            )
             if val > 0.09:
-                ax.text(left + val / 2, i, f"{key}\n{val:.0%}", ha="center", va="center",
-                        fontsize=S.FS["micro"],
-                        color=S.PAPER if _dark(colour) else S.INK)
+                ax.text(
+                    left + val / 2,
+                    i,
+                    f"{key}\n{val:.0%}",
+                    ha="center",
+                    va="center",
+                    fontsize=S.FS["micro"],
+                    color=S.PAPER if _dark(colour) else S.INK,
+                )
             left += val
         ax.text(0, i + 0.36, label, fontsize=S.FS["micro"], color=S.MUTED, va="bottom")
     ax.invert_yaxis()
@@ -323,7 +386,7 @@ def _osm_landuse_fractions(lu: dict[str, Any]) -> dict[str, float]:
             continue
         if not isinstance(val, (int, float)):
             continue
-        out[key[len("landuse_"):-len("_fraction")]] = float(val)
+        out[key[len("landuse_") : -len("_fraction")]] = float(val)
     return out
 
 
@@ -350,7 +413,7 @@ def _landcover_fractions(lu: dict[str, Any]) -> dict[str, float]:
         if not isinstance(val, (int, float)):
             continue
         try:
-            code = int(key[len("landcover_class_"):-len("_fraction")])
+            code = int(key[len("landcover_class_") : -len("_fraction")])
         except ValueError:
             continue
         out[CLASSES.get(code, f"class {code}")] = float(val)
@@ -359,7 +422,7 @@ def _landcover_fractions(lu: dict[str, Any]) -> dict[str, float]:
 
 def _dark(hex_colour: str) -> bool:
     h = hex_colour.lstrip("#")
-    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
     return (0.299 * r + 0.587 * g + 0.114 * b) < 140
 
 
@@ -377,12 +440,27 @@ def locator(ax: Axes, aoi: AOI) -> None:
         ax.axvline(x, color=S.FAINT, lw=S.LW["hair"])
     ax.axhline(0, color=S.RULE, lw=S.LW["thin"])
     ax.plot([lon], [lat], marker="+", color=S.ACCENT, ms=9, mew=1.1)
-    ax.text(lon, lat - 12, f"{abs(lat):.2f}{'N' if lat >= 0 else 'S'}  "
-                           f"{abs(lon):.2f}{'E' if lon >= 0 else 'W'}",
-            ha="center", va="top", fontsize=S.FS["micro"], color=S.MUTED)
+    ax.text(
+        lon,
+        lat - 12,
+        f"{abs(lat):.2f}{'N' if lat >= 0 else 'S'}  {abs(lon):.2f}{'E' if lon >= 0 else 'W'}",
+        ha="center",
+        va="top",
+        fontsize=S.FS["micro"],
+        color=S.MUTED,
+    )
 
 
 def _empty(ax: Axes, msg: str) -> None:
     S.strip(ax)
-    ax.text(0.5, 0.5, msg, transform=ax.transAxes, ha="center", va="center",
-            fontsize=S.FS["small"], color=S.MUTED, style="italic")
+    ax.text(
+        0.5,
+        0.5,
+        msg,
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=S.FS["small"],
+        color=S.MUTED,
+        style="italic",
+    )

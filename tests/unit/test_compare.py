@@ -16,8 +16,11 @@ def _site(name: str, lon: float, lat: float, radius: float, gsi: float):
     minx, miny, maxx, maxy = aoi.bounds_metric
     side = (maxx - minx) * (gsi**0.5)
     buildings = gpd.GeoDataFrame(
-        {"geometry": [Polygon([(minx, miny), (minx + side, miny),
-                               (minx + side, miny + side), (minx, miny + side)])]},
+        {
+            "geometry": [
+                Polygon([(minx, miny), (minx + side, miny), (minx + side, miny + side), (minx, miny + side)])
+            ]
+        },
         crs=aoi.crs,
     )
     streets = gpd.GeoDataFrame(
@@ -29,8 +32,7 @@ def _site(name: str, lon: float, lat: float, radius: float, gsi: float):
         "streets": LayerResult("streets", "test", gdf=streets),
     }
     metrics = {
-        "street": {"intersection_density_km2": 100.0 * (1 + gsi),
-                   "orientation_order_phi": gsi},
+        "street": {"intersection_density_km2": 100.0 * (1 + gsi), "orientation_order_phi": gsi},
         "fabric": {"gsi": gsi, "fsi": None},
         "climate": {"hdd_18c": 2000.0, "cdd_18c": 500.0},
     }
@@ -51,10 +53,7 @@ def test_compare_writes_a_pdf(tmp_path, bundle):
 
 
 def test_compare_accepts_three_and_four_sites(tmp_path, bundle):
-    four = bundle + [
-        _site("gamma", 3.0, 42.0, 1000.0, 0.10),
-        _site("delta", 3.0, 43.0, 1000.0, 0.55),
-    ]
+    four = [*bundle, _site("gamma", 3.0, 42.0, 1000.0, 0.1), _site("delta", 3.0, 43.0, 1000.0, 0.55)]
     assert render_compare(tmp_path / "four.pdf", four).exists()
     assert render_compare(tmp_path / "three.pdf", four[:3]).exists()
 
@@ -78,8 +77,7 @@ def test_no_row_claims_a_direction_of_preference():
     describing, and the weighting it implies belongs to the client.
     """
     assert all(row[5] is None for row in ROWS), (
-        "a comparison row declares a preferred direction; that judgement is the "
-        "client's, not the tool's"
+        "a comparison row declares a preferred direction; that judgement is the client's, not the tool's"
     )
 
 

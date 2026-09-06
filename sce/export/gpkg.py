@@ -55,7 +55,7 @@ def _sanitize_gdf(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 
-def _aoi_gdf(aoi) -> gpd.GeoDataFrame:  # noqa: ANN001
+def _aoi_gdf(aoi) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
         {"name": [aoi.name], "epsg": [aoi.epsg], "area_ha": [round(aoi.area_ha, 4)]},
         geometry=[aoi.geometry],
@@ -76,7 +76,7 @@ def _flatten_for_table(prefix: str, obj: Any, out: dict[str, Any]) -> None:
 def write_gpkg(
     path: str | Path,
     layers: dict[str, LayerResult],
-    aoi,  # noqa: ANN001
+    aoi,
     metrics: dict[str, dict] | None = None,
 ) -> Path:
     """Write every layer's geometry plus the AOI square to a layered GPKG.

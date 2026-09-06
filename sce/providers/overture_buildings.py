@@ -9,11 +9,11 @@ contract says not to add one.
 
 from __future__ import annotations
 
-import shapely
 import geopandas as gpd
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
+import shapely
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
@@ -35,7 +35,7 @@ def _resolve_release(s3: fs.S3FileSystem) -> str:
         )
         if releases:
             return releases[-1]
-    except Exception:  # noqa: BLE001 - a listing failure just falls back
+    except Exception:
         pass
     return DEFAULT_RELEASE
 
@@ -57,10 +57,10 @@ class OvertureBuildingsProvider(Provider):
     rank = 20
     commercial_ok = True
 
-    def available(self, aoi) -> bool:  # noqa: ANN001
+    def available(self, aoi) -> bool:
         return True
 
-    def fetch(self, aoi, cache) -> LayerResult:  # noqa: ANN001
+    def fetch(self, aoi, cache) -> LayerResult:
         w, s, e, n = aoi.bbox_wgs84
         try:
             s3 = fs.S3FileSystem(anonymous=True, region="us-west-2")
@@ -77,7 +77,7 @@ class OvertureBuildingsProvider(Provider):
                 filter=bbox_filter,
                 columns=["id", "geometry", "height", "num_floors", "subtype", "class"],
             )
-        except Exception as exc:  # noqa: BLE001 - registry falls through on raise
+        except Exception as exc:
             raise RuntimeError(f"overture_buildings: S3 read failed: {exc}") from exc
 
         if table.num_rows == 0:
@@ -90,7 +90,7 @@ class OvertureBuildingsProvider(Provider):
         if len(gdf) == 0:
             raise RuntimeError("overture_buildings: no polygonal building features for AOI")
 
-        parsed = [_height_from_row(h, f) for h, f in zip(gdf["height"], gdf["num_floors"])]
+        parsed = [_height_from_row(h, f) for h, f in zip(gdf["height"], gdf["num_floors"], strict=False)]
         gdf["height_m"] = [p[0] for p in parsed]
         gdf["height_source"] = [p[1] for p in parsed]
 

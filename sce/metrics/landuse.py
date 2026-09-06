@@ -111,8 +111,11 @@ def _osm_landuse_fractions(gdf, aoi: AOI) -> dict[str, Any]:
     claimed = None
     mapped_area = 0.0
     for cls in ordered:
-        geoms = [make_valid(g) for g in gdf.loc[classes == cls, gdf.geometry.name].values
-                 if g is not None and not g.is_empty]
+        geoms = [
+            make_valid(g)
+            for g in gdf.loc[classes == cls, gdf.geometry.name].values
+            if g is not None and not g.is_empty
+        ]
         if not geoms:
             result[f"landuse_{cls}_fraction"] = 0.0
             continue
@@ -143,7 +146,7 @@ def _landcover_fractions(raster: dict[str, Any] | None) -> dict[str, Any]:
         result["landcover_source"] = "raster contained no valid pixels over the AOI"
         return result
     codes, counts = np.unique(valid, return_counts=True)
-    for code, count in zip(codes, counts):
+    for code, count in zip(codes, counts, strict=False):
         result[f"landcover_class_{int(code)}_fraction"] = float(count) / float(total)
     return result
 

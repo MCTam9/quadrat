@@ -43,7 +43,7 @@ _LAYER_COLOUR: dict[str, tuple[int, int, int, int]] = {
 _CONTOUR_INTERVALS = (1.0, 2.0, 5.0, 10.0, 25.0)
 
 
-def _require_rhino3dm():  # noqa: ANN202
+def _require_rhino3dm():
     try:
         import rhino3dm
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
@@ -54,7 +54,7 @@ def _require_rhino3dm():  # noqa: ANN202
     return rhino3dm
 
 
-def _new_document(rhino3dm) -> Any:  # noqa: ANN001
+def _new_document(rhino3dm) -> Any:
     doc = rhino3dm.File3dm()
     doc.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Meters
     doc.Settings.ModelAbsoluteTolerance = 0.001
@@ -63,18 +63,18 @@ def _new_document(rhino3dm) -> Any:  # noqa: ANN001
     return doc
 
 
-def _layer_index(doc, name: str) -> int:  # noqa: ANN001
+def _layer_index(doc, name: str) -> int:
     layer = doc.Layers.FindName(name, None)
     return layer.Index
 
 
-def _attrs(rhino3dm, doc, layer_name: str):  # noqa: ANN001, ANN202
+def _attrs(rhino3dm, doc, layer_name: str):
     attrs = rhino3dm.ObjectAttributes()
     attrs.LayerIndex = _layer_index(doc, layer_name)
     return attrs
 
 
-def _polygon_parts(geom):  # noqa: ANN001, ANN202
+def _polygon_parts(geom):
     """(exterior_ring, [hole_rings]) per polygon part, dropping the Z ezdxf-style tuples."""
     parts = []
     geoms = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
@@ -87,7 +87,7 @@ def _polygon_parts(geom):  # noqa: ANN001, ANN202
     return parts
 
 
-def _closed_polyline_curve(rhino3dm, ring: list[tuple[float, float]], z: float = 0.0):  # noqa: ANN001, ANN202
+def _closed_polyline_curve(rhino3dm, ring: list[tuple[float, float]], z: float = 0.0):
     pts = [rhino3dm.Point3d(x, y, z) for x, y in ring]
     if len(pts) < 4:  # a closed ring needs at least a triangle plus the repeated closing point
         return None
@@ -97,20 +97,22 @@ def _closed_polyline_curve(rhino3dm, ring: list[tuple[float, float]], z: float =
     return polyline.ToPolylineCurve()
 
 
-def _open_polyline_curve(rhino3dm, pts: list[tuple[float, ...]]):  # noqa: ANN001, ANN202
+def _open_polyline_curve(rhino3dm, pts: list[tuple[float, ...]]):
     pts3 = [rhino3dm.Point3d(*p[:3]) if len(p) >= 3 else rhino3dm.Point3d(p[0], p[1], 0.0) for p in pts]
     if len(pts3) < 2:
         return None
     return rhino3dm.Polyline(pts3).ToPolylineCurve()
 
 
-def _add_boundary(rhino3dm, doc, aoi) -> None:  # noqa: ANN001
+def _add_boundary(rhino3dm, doc, aoi) -> None:
     curve = _closed_polyline_curve(rhino3dm, list(aoi.geometry.exterior.coords))
     if curve is not None:
         doc.Objects.AddCurve(curve, _attrs(rhino3dm, doc, "SITE-BOUNDARY"))
 
 
-def _extrusion_for_polygon(rhino3dm, exterior: list[tuple[float, float]], holes: list[list[tuple[float, float]]], height: float):  # noqa: ANN001, ANN202
+def _extrusion_for_polygon(
+    rhino3dm, exterior: list[tuple[float, float]], holes: list[list[tuple[float, float]]], height: float
+):
     outer_curve = _closed_polyline_curve(rhino3dm, exterior)
     if outer_curve is None or not outer_curve.IsClosed:
         return None
@@ -124,7 +126,7 @@ def _extrusion_for_polygon(rhino3dm, exterior: list[tuple[float, float]], holes:
     return extrusion
 
 
-def _write_buildings(rhino3dm, doc, result: LayerResult | None) -> dict[str, int]:  # noqa: ANN001
+def _write_buildings(rhino3dm, doc, result: LayerResult | None) -> dict[str, int]:
     counts = {"massing": 0, "footprint_only": 0}
     if result is None or result.gdf is None:
         return counts
@@ -158,7 +160,7 @@ def _write_buildings(rhino3dm, doc, result: LayerResult | None) -> dict[str, int
     return counts
 
 
-def _write_streets(rhino3dm, doc, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_streets(rhino3dm, doc, result: LayerResult | None) -> int:
     count = 0
     if result is None or result.gdf is None:
         return count
@@ -186,7 +188,9 @@ def _choose_contour_interval(zmin: float, zmax: float) -> float:
     return _CONTOUR_INTERVALS[-1]
 
 
-def _contour_segments(array: np.ndarray, transform, interval: float) -> list[list[tuple[float, float, float]]]:
+def _contour_segments(
+    array: np.ndarray, transform, interval: float
+) -> list[list[tuple[float, float, float]]]:
     """Reuse the same matplotlib-contour approach as the DXF exporter, kept
     local so this module has no import-time dependency on `export/dxf.py`."""
     import matplotlib
@@ -214,21 +218,23 @@ def _contour_segments(array: np.ndarray, transform, interval: float) -> list[lis
         cs = ax.contour(xs, ys, array, levels=levels)
         out: list[list[tuple[float, float, float]]] = []
         if hasattr(cs, "allsegs"):
-            for level, segs in zip(cs.levels, cs.allsegs):
-                for seg in segs:
-                    if len(seg) >= 2:
-                        out.append([(float(x), float(y), float(level)) for x, y in seg])
+            for level, segs in zip(cs.levels, cs.allsegs, strict=False):
+                out.extend(
+                    [(float(x), float(y), float(level)) for x, y in seg] for seg in segs if len(seg) >= 2
+                )
         else:  # pragma: no cover - fallback for matplotlib >= 3.10 collections removal
-            for level, path in zip(cs.levels, cs.get_paths()):
-                for polygon in path.to_polygons():
-                    if len(polygon) >= 2:
-                        out.append([(float(x), float(y), float(level)) for x, y in polygon])
+            for level, path in zip(cs.levels, cs.get_paths(), strict=False):
+                out.extend(
+                    [(float(x), float(y), float(level)) for x, y in polygon]
+                    for polygon in path.to_polygons()
+                    if len(polygon) >= 2
+                )
         return out
     finally:
         plt.close(fig)
 
 
-def _write_contours(rhino3dm, doc, result: LayerResult | None) -> int:  # noqa: ANN001
+def _write_contours(rhino3dm, doc, result: LayerResult | None) -> int:
     if result is None or result.raster is None:
         return 0
     raster = result.raster
@@ -250,7 +256,7 @@ def _write_contours(rhino3dm, doc, result: LayerResult | None) -> int:  # noqa: 
     return count
 
 
-def write_3dm(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:  # noqa: ANN001
+def write_3dm(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:
     """Write buildings (massing where height is known, footprint otherwise),
     streets, terrain contours and the AOI boundary to a metric `.3dm` file."""
     rhino3dm = _require_rhino3dm()

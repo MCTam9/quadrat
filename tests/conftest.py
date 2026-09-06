@@ -22,9 +22,7 @@ NETWORK_ERROR = "network access attempted in a test"
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line(
-        "markers", "live: allow real network access; runs against live APIs, not CI"
-    )
+    config.addinivalue_line("markers", "live: allow real network access; runs against live APIs, not CI")
 
 
 @pytest.fixture(autouse=True)
