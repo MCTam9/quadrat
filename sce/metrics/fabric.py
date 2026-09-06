@@ -129,8 +129,22 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             result["fsi"] = floor_area / aoi.area_m2 if aoi.area_m2 else None
             result["fsi_source"] = "building heights (OSM height/levels tags)"
         else:
-            result["fsi"] = None
-            result["fsi_source"] = f"height coverage {coverage:.2f} below {FSI_COVERAGE_THRESHOLD:.2f} threshold"
+            ghsl = layers.get("building_height")
+            ghsl_mean_height = (ghsl.data or {}).get("mean_height_m") if ghsl is not None else None
+            if ghsl_mean_height is not None:
+                storeys = ghsl_mean_height / LEVEL_HEIGHT_M
+                floor_area = footprint_union_area * storeys
+                result["fsi"] = floor_area / aoi.area_m2 if aoi.area_m2 else None
+                result["fsi_source"] = (
+                    f"GHSL GHS-BUILT-H R2023A mean net building height ({ghsl_mean_height:.1f} m), "
+                    f"fallback because OSM height coverage {coverage:.2f} is below "
+                    f"{FSI_COVERAGE_THRESHOLD:.2f}"
+                )
+            else:
+                result["fsi"] = None
+                result["fsi_source"] = (
+                    f"height coverage {coverage:.2f} below {FSI_COVERAGE_THRESHOLD:.2f} threshold"
+                )
 
     streets = layers.get("streets")
     graph = (streets.data or {}).get("graph") if streets is not None else None

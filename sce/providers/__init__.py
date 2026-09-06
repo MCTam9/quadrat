@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from . import (  # noqa: F401
     climate_openmeteo,
+    height_ghsl,
     landcover_worldcover,
     osm_amenities,
     osm_buildings,
@@ -17,5 +18,6 @@ from . import (  # noqa: F401
     osm_streets,
     overture_buildings,
     terrain_copernicus,
+    terrain_fabdem,
     uk_constraints,
 )

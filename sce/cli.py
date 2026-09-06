@@ -16,7 +16,17 @@ import click
 from . import __version__
 from .aoi import AOI
 
-LAYERS = ("streets", "buildings", "landuse", "landcover", "amenities", "terrain", "climate", "constraints")
+LAYERS = (
+    "streets",
+    "buildings",
+    "landuse",
+    "landcover",
+    "amenities",
+    "terrain",
+    "climate",
+    "constraints",
+    "building_height",
+)
 
 # Above this the Overpass download is huge and the figure-ground degrades into a
 # grey smudge, so it is deliberately behind a flag.

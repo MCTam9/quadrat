@@ -24,6 +24,8 @@ now runs in about a minute, anywhere.
 | `<site>.dossier.json` | Every metric, every source, licence and retrieval date, git SHA |
 | `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, with QGIS styles |
 | `<site>.dxf` | Real-world metres, layered for AutoCAD, Rhino, Revit and Vectorworks |
+| `<site>.3dm` | Rhino model: buildings with known heights extruded to solids, the rest left as flat curves |
+| `compare.pdf` | Two to four sites at one shared scale |
 
 ## Verified on three continents
 
@@ -35,7 +37,7 @@ Run on 2026-09-06 at a 1,200 m radius, no code changes between sites.
 | Intersections per km² | 198 | 245 | — |
 | Mean street segment | 52 m | 27 m | — |
 | Ground space index | 0.20 | 0.40 | 0.44 |
-| Floor space index | withheld, 10% height coverage | 1.18 | withheld, 1% height coverage |
+| Floor space index | 0.64, from GHSL | 1.18, from OSM | from GHSL |
 | Median block | 0.25 ha | 0.40 ha | — |
 | Heating degree days | 2,183 | 2,335 | 210 |
 | Cooling degree days | 1,382 | 126 | 3,696 |
@@ -84,9 +86,13 @@ analyst-day per bid in QGIS. This does something narrower and more repeatable.
   Tashkent as in London.
 - **Prints its own provenance.** Every sheet carries the projection, the sources,
   their licences and the date each was retrieved, plus the commit that drew it.
-- **Refuses to guess.** Floor space index is withheld, with the coverage stated,
-  whenever building height data covers less than 40% of footprints. Land use
-  shows an explicit unmapped slice.
+- **Refuses to guess, and says which source it fell back to.** Where OpenStreetMap
+  building heights cover less than 40% of footprints, floor space index is
+  derived from the Global Human Settlement Layer instead and labelled as such on
+  the sheet, with the coverage that triggered the fallback. Where neither is
+  available it is withheld. The Rhino model draws the same distinction in
+  geometry: buildings with a known height become solids, the rest stay flat
+  curves, so a designer can see at a glance which heights are real.
 - **Is a pipeline, not a picture.** The dossier and GeoPackage carry everything
   the drawing shows, so the output is an input to something else.
 - **No composite score.** The compare mode normalises but does not rank.
@@ -153,8 +159,13 @@ registry rather than maintained by hand.
 
 ## Roadmap
 
-Bare-earth terrain via FABDEM behind an opt-in flag, since it is
-non-commercial. Global Wind Atlas for coastal and mountain sites where ERA5 is
-too coarse. Population density from the Global Human Settlement Layer. Building
-height fallback from GHS-BUILT-H so floor space index survives thin OSM height
-coverage. Configurational street metrics via momepy. Speckle export.
+Global Wind Atlas for coastal and mountain sites where ERA5 is too coarse.
+Population density from the Global Human Settlement Layer. Configurational
+street metrics via momepy. Speckle export.
+
+Bare-earth terrain is available now via `--dtm fabdem`, but the tiles are not
+fetched: FABDEM is published as whole 10-degree archives with no windowed read
+and no documented interface, so the provider reads tiles you have downloaded
+and accepted the licence for, and tells you exactly where to get them. It is
+CC BY-NC-SA, so it is never the default, and using it prints a non-commercial
+notice on the sheet.

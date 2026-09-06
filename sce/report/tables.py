@@ -76,8 +76,9 @@ SPEC: list[tuple[str, str, str, str, str]] = [
 # Where a value is uncertain, the companion key that explains why.
 NOTE_KEYS: dict[str, Callable[[dict], str]] = {
     "fsi": lambda m: (
-        "" if m.get("fsi") is not None
-        else f"height coverage {m.get('fsi_coverage', 0):.0%}, below 40% threshold"
+        f"height coverage {m.get('fsi_coverage', 0):.0%}, below 40% threshold"
+        if m.get("fsi") is None
+        else ("GHSL-derived (OSM height coverage too sparse)" if "GHSL" in str(m.get("fsi_source", "")) else "")
     ),
 }
 
