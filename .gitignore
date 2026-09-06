@@ -7,3 +7,4 @@ __pycache__/
 out/
 tests/fixtures/cache/
 .DS_Store
+*.pdf
