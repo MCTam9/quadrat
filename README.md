@@ -48,6 +48,33 @@ much of Central Asia and the Gulf, OSM land use is close to absent, and a single
 mix statistic computed over mostly unmapped ground is precisely wrong. The sheet
 shows the unmapped share explicitly and puts the satellite land cover beside it.
 
+## Comparing sites
+
+```bash
+sce compare tashkent=69.2401,41.2995 london=-0.1276,51.5074 riyadh=46.6753,24.7136 \
+            --radius 1200
+```
+
+Two to four sites on one A3 sheet, every figure-ground drawn at the same scale
+so the difference in grain is legible before any number is read. A smaller site
+gets white margin rather than a zoom, because the margin is honest.
+
+| | Tashkent | London | Riyadh |
+|---|---|---|---|
+| Orientation order | 0.06 | 0.11 | 0.82 |
+| Mean segment length | 52 m | 27 m | 78 m |
+| Median footprint | 127 m² | 144 m² | 453 m² |
+| Street length density | 33.5 km/km² | 62.2 km/km² | 28.3 km/km² |
+
+Riyadh's rigid grid returning 0.82 against London's medieval 0.11 is the
+orientation metric doing exactly what it should.
+
+There is no composite score, and a test enforces that no row ever declares a
+preferred direction. A steeper site is not a worse site. Weighting these
+against one another is the client's judgement on a particular project, and
+burying it in a number nobody can argue with would be worth less than the
+refusal.
+
 ## What it does that the alternatives do not
 
 Firms already buy CAD extracts, run browser-based massing analysis, or spend an
