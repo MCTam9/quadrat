@@ -38,7 +38,7 @@ def render_sheet(
     aoi: AOI,
     layers: dict[str, Any],
     metrics: dict[str, Any],
-    warnings: list[str] | None = None,
+    assessment: dict[str, Any] | list[str] | None = None,
 ) -> Path:
     """Draw and write the sheet. Vector PDF unless the suffix says otherwise."""
     S.apply()
@@ -90,12 +90,22 @@ def render_sheet(
     S.panel_title(ax_loc, "location")
 
     _header(fig, aoi)
-    _title_block(fig, aoi, layers, warnings)
+    _title_block(fig, aoi, layers, _warnings_of(assessment))
 
     fig.savefig(path, format=path.suffix.lstrip(".") or "pdf",
                 bbox_inches=None, facecolor=S.PAPER)
     plt.close(fig)
     return path
+
+
+def _warnings_of(assessment: dict[str, Any] | list[str] | None) -> list[str]:
+    """Accept either the full assessment dict from `sce.coverage.assess` or a
+    plain list, so a caller holding only warnings is not forced to wrap them."""
+    if assessment is None:
+        return []
+    if isinstance(assessment, dict):
+        return list(assessment.get("warnings") or [])
+    return list(assessment)
 
 
 def _terrain_sub(metrics: dict[str, Any]) -> str:
@@ -116,10 +126,14 @@ def _metrics_table(ax, metrics: dict[str, Any]) -> None:
     ax.set_aspect("auto")
     ax.set_xlim(0, 1)
     rows = metric_rows(metrics)
-    ax.set_ylim(len(rows), 0)
+    height = sum(1.5 if r.note else 1.0 for r in rows)
+    ax.set_ylim(height, 0)
 
-    for i, row in enumerate(rows):
+    cursor = 0.0
+    for row in rows:
+        i = cursor
         y = i + 0.72
+        cursor += 1.5 if row.note else 1.0
         if row.is_section:
             ax.text(0, y, " ".join(row.label.upper()), fontsize=S.FS["micro"],
                     color=S.MUTED, weight="bold", va="baseline")
@@ -130,8 +144,8 @@ def _metrics_table(ax, metrics: dict[str, Any]) -> None:
         ax.text(1, y, row.value, fontsize=S.FS["small"], color=S.INK,
                 va="baseline", ha="right", family="monospace")
         if row.note:
-            ax.text(1, y + 0.62, row.note, fontsize=S.FS["micro"], color=S.MUTED,
-                    va="baseline", ha="right")
+            ax.text(0, y + 0.42, row.note, fontsize=S.FS["micro"], color=S.MUTED,
+                    va="baseline", ha="left")
 
 
 def _header(fig, aoi: AOI) -> None:
@@ -169,10 +183,11 @@ def _title_block(fig, aoi: AOI, layers: dict[str, Any], warnings: list[str] | No
                 non_commercial.append(src.name)
 
     lines = []
-    for src in list(seen.values())[:6]:
+    for src in list(seen.values())[:4]:
         lines.append(f"{src.name} ({src.licence}, retrieved {src.retrieved[:10]})")
-    fig.text(0.035, 0.042, "SOURCES   " + "   ·   ".join(lines) if lines else "",
-             fontsize=S.FS["micro"], color=S.MUTED, va="top")
+    if lines:
+        fig.text(0.035, 0.042, "SOURCES   " + "   ·   ".join(lines),
+                 fontsize=S.FS["micro"], color=S.MUTED, va="top", wrap=False)
 
     if warnings:
         fig.text(0.035, 0.026, "NOTES   " + "   ·   ".join(warnings[:3]),
@@ -183,6 +198,6 @@ def _title_block(fig, aoi: AOI, layers: dict[str, Any], warnings: list[str] | No
                  "NON-COMMERCIAL LICENCE IN USE: " + ", ".join(sorted(set(non_commercial))),
                  fontsize=S.FS["micro"], color=S.ACCENT, va="top", weight="bold")
 
-    fig.text(0.965, 0.042, f"sce {__version__}  ·  {_git_sha()}  ·  {aoi.epsg}",
+    fig.text(0.965, 0.026, f"sce {__version__}  ·  {_git_sha()}  ·  {aoi.epsg}",
              fontsize=S.FS["micro"], color=S.MUTED, ha="right", va="top",
              family="monospace")

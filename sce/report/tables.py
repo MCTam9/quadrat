@@ -18,9 +18,23 @@ class Row:
     is_section: bool = False
 
 
+COMPASS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+           "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+
+
+def _compass(degrees: float) -> str:
+    """A bearing an architect can act on. "NW 315" beats "315"."""
+    return f"{COMPASS[int(round(degrees / 22.5)) % 16]} {degrees:.0f}°"
+
+
 def _fmt(value: Any, spec: str = "{:.2f}", suffix: str = "") -> str:
     if value is None:
         return "—"
+    if spec == "@compass":
+        try:
+            return _compass(float(value))
+        except (TypeError, ValueError):
+            return str(value)
     if isinstance(value, str):
         return value
     try:
@@ -32,8 +46,8 @@ def _fmt(value: Any, spec: str = "{:.2f}", suffix: str = "") -> str:
 # label, metric group, key, formatter, unit
 SPEC: list[tuple[str, str, str, str, str]] = [
     ("__section__", "", "street network", "", ""),
-    ("Intersection density", "street", "intersection_density_per_km2", "{:.0f}", " /km²"),
-    ("Street length density", "street", "street_length_density_km_per_km2", "{:.1f}", " km/km²"),
+    ("Intersection density", "street", "intersection_density_km2", "{:.0f}", " /km²"),
+    ("Street length density", "street", "street_length_density_km_km2", "{:.1f}", " km/km²"),
     ("Mean segment length", "street", "segment_length_mean_m", "{:.0f}", " m"),
     ("Dead-end share", "street", "dead_end_share", "{:.1%}", ""),
     ("Orientation order φ", "street", "orientation_order_phi", "{:.2f}", ""),
@@ -44,19 +58,19 @@ SPEC: list[tuple[str, str, str, str, str]] = [
     ("Median block area", "fabric", "block_area_median_ha", "{:.2f}", " ha"),
     ("Blocks counted", "fabric", "block_count", "{:.0f}", ""),
     ("__section__", "", "access", "", ""),
-    ("10-min walk reach", "access", "walk_reach_ratio", "{:.2f}", ""),
-    ("Amenity categories", "access", "amenity_categories_reachable", "{:.0f}", ""),
-    ("Nearest transport", "access", "transport_distance_m", "{:.0f}", " m"),
+    ("10-min walk reach", "access", "walk_reach_ratio_10min", "{:.2f}", ""),
+    ("Amenity categories", "access", "amenity_category_count_10min", "{:.0f}", ""),
+    ("Nearest transport", "access", "nearest_transit_distance_m", "{:.0f}", " m"),
     ("__section__", "", "terrain", "", ""),
     ("Mean slope", "terrain", "slope_mean_deg", "{:.1f}", "°"),
-    ("Area under 1:20", "terrain", "fraction_under_1_in_20", "{:.0%}", ""),
+    ("Area under 1:20", "terrain", "buildable_fraction_under_1_20", "{:.0%}", ""),
     ("Elevation range", "terrain", "elevation_range_m", "{:.0f}", " m"),
     ("Dominant aspect", "terrain", "dominant_aspect", "{}", ""),
     ("__section__", "", "climate", "", ""),
     ("Heating degree days", "climate", "hdd_18c", "{:.0f}", ""),
     ("Cooling degree days", "climate", "cdd_18c", "{:.0f}", ""),
-    ("Annual GHI", "climate", "ghi_kwh_m2", "{:.0f}", " kWh/m²"),
-    ("Prevailing wind", "climate", "prevailing_wind_direction", "{}", ""),
+    ("Annual GHI", "climate", "ghi_kwh_m2_year", "{:.0f}", " kWh/m²"),
+    ("Prevailing wind", "climate", "prevailing_wind_direction_deg", "@compass", ""),
 ]
 
 # Where a value is uncertain, the companion key that explains why.

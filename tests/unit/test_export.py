@@ -271,7 +271,9 @@ def test_dxf_no_terrain_no_crash(tmp_path, aoi, buildings_gdf):
 
 
 def test_write_dossier(tmp_path, aoi, layers, metrics):
-    out = write_dossier(tmp_path / "dossier.json", aoi, layers, metrics, warnings=["low coverage on landuse"])
+    out = write_dossier(tmp_path / "dossier.json", aoi, layers, metrics,
+                        assessment={"coverage": {"landuse": 0.12}, "degraded": True,
+                                    "warnings": ["low coverage on landuse"]})
     payload = json.loads(out.read_text())
     assert payload["schema_version"] == 1
     assert payload["aoi"]["crs"] == aoi.epsg

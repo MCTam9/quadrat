@@ -102,8 +102,12 @@ def solar_position(
     with np.errstate(invalid="ignore", divide="ignore"):
         cos_az = (np.sin(lat_r) * cos_zenith - np.sin(decl)) / (np.cos(lat_r) * sin_zenith)
     cos_az = np.clip(np.nan_to_num(cos_az, nan=1.0), -1.0, 1.0)
-    azimuth = np.degrees(np.arccos(cos_az))
-    azimuth = np.where(hour_angle > 0, 360.0 - azimuth, azimuth)
+    # The arccosine yields the angle away from due south, not from north. Solar
+    # noon in the northern hemisphere must come out at 180 degrees, so measure
+    # from south and mirror across the meridian in the afternoon.
+    from_south = np.degrees(np.arccos(cos_az))
+    azimuth = np.where(hour_angle > 0, 180.0 + from_south, 180.0 - from_south)
+    azimuth = np.mod(azimuth, 360.0)
 
     return SunPositions(azimuth=azimuth, altitude=altitude, hours=hour)
 

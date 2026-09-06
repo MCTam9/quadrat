@@ -45,12 +45,24 @@ def _dedup_sources(layers: dict[str, LayerResult]) -> list[dict[str, Any]]:
     return sorted(seen.values(), key=lambda d: (d["name"], d["licence"], d["url"]))
 
 
+def _warnings_of(assessment) -> list[str]:  # noqa: ANN001
+    if assessment is None:
+        return []
+    if isinstance(assessment, dict):
+        return list(assessment.get("warnings") or [])
+    return list(assessment)
+
+
+def _coverage_of(assessment) -> dict:  # noqa: ANN001
+    return dict(assessment.get("coverage") or {}) if isinstance(assessment, dict) else {}
+
+
 def write_dossier(
     path: str | Path,
     aoi,  # noqa: ANN001
     layers: dict[str, LayerResult],
     metrics: dict[str, dict],
-    warnings: list[str] | None = None,
+    assessment: dict | list[str] | None = None,
 ) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +76,9 @@ def write_dossier(
         "metrics": {k: metrics[k] for k in sorted(metrics)},
         "layers": {k: layers[k].provenance() for k in sorted(layers) if layers[k] is not None},
         "sources": _dedup_sources(layers),
-        "warnings": sorted(warnings) if warnings else [],
+        "coverage": _coverage_of(assessment),
+        "degraded": bool(assessment.get("degraded")) if isinstance(assessment, dict) else False,
+        "warnings": sorted(_warnings_of(assessment)),
     }
 
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str))

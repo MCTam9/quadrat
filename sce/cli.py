@@ -123,15 +123,15 @@ def report(coords, geojson, radius, name, outdir, only, overrides, dtm, exports,
         raise click.ClickException("no layer returned data; check connectivity")
 
     metrics = compute_all(layers, aoi)
-    warnings = assess(layers, aoi)
+    assessment = assess(layers, aoi)
 
-    dossier = write_dossier(out / f"{name}.dossier.json", aoi, layers, metrics, warnings)
+    dossier = write_dossier(out / f"{name}.dossier.json", aoi, layers, metrics, assessment)
     click.echo(f"  wrote {dossier}", err=True)
 
     if not no_sheet:
         from .report.sheet import render_sheet
 
-        pdf = render_sheet(out / f"{name}.pdf", aoi, layers, metrics, warnings)
+        pdf = render_sheet(out / f"{name}.pdf", aoi, layers, metrics, assessment)
         click.echo(f"  wrote {pdf}", err=True)
 
     _run_exports(exports, out, name, aoi, layers, metrics)

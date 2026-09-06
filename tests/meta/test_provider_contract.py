@@ -70,3 +70,28 @@ def test_every_layer_has_at_least_one_provider(providers):
     missing = LAYERS - layers_covered
     if missing:
         pytest.skip(f"layers not yet covered by any provider: {missing}")
+
+
+def test_every_provider_module_is_imported_by_the_package():
+    """A provider module that nobody imports registers nothing.
+
+    That failure is silent: the layer simply never appears, and the sheet prints
+    an empty panel instead of raising. This test is the only thing standing
+    between that and a demo with three blank boxes on it.
+    """
+    import pkgutil
+    from pathlib import Path
+
+    import sce.providers as pkg
+
+    on_disk = {
+        m.name
+        for m in pkgutil.iter_modules([str(Path(pkg.__file__).parent)])
+        if not m.name.startswith("_")
+    }
+    imported = {name for name in on_disk if hasattr(pkg, name)}
+    missing = sorted(on_disk - imported)
+    assert not missing, (
+        f"provider modules not imported in sce/providers/__init__.py: {missing}. "
+        "They are registering nothing."
+    )

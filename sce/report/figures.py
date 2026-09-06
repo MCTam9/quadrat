@@ -11,6 +11,7 @@ import math
 from typing import Any
 
 import numpy as np
+import matplotlib.lines as mlines
 from matplotlib.axes import Axes
 from matplotlib.colors import LightSource, ListedColormap, BoundaryNorm
 
@@ -56,8 +57,44 @@ def figure_ground(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     if bld is not None and bld.gdf is not None and len(bld.gdf):
         bld.gdf.plot(ax=ax, facecolor=S.BUILT, edgecolor="none", zorder=3)
 
+    constraints_overlay(ax, layers)
     S.scale_bar(ax, aoi.bounds_metric[2] - aoi.bounds_metric[0])
     S.north_arrow(ax)
+
+
+def constraints_overlay(ax: Axes, layers: dict[str, Any]) -> None:
+    """Statutory designations, drawn over the figure-ground where they exist.
+
+    This is the point of the provider seam. The command is identical in London
+    and in Tashkent; a Conservation Area boundary appears on one sheet and not
+    the other purely because the data exists in one place and not the other.
+    Drawn as outlines rather than fills so the built form stays readable
+    underneath: a designation is a line on a plan, not a wash over it.
+    """
+    result = layers.get("constraints")
+    if result is None or result.gdf is None or not len(result.gdf):
+        return
+    gdf = result.gdf
+    column = "dataset" if "dataset" in gdf.columns else None
+    datasets = sorted(gdf[column].dropna().unique()) if column else ["constraints"]
+
+    handles = []
+    for i, name in enumerate(datasets):
+        subset = gdf if column is None else gdf[gdf[column] == name]
+        if not len(subset):
+            continue
+        colour = S.CONSTRAINT_COLOURS[i % len(S.CONSTRAINT_COLOURS)]
+        dashes = S.CONSTRAINT_DASHES[i % len(S.CONSTRAINT_DASHES)]
+        subset.boundary.plot(ax=ax, color=colour, linewidth=S.LW["line"],
+                             linestyle=dashes, zorder=6)
+        handles.append(mlines.Line2D([], [], color=colour, lw=S.LW["line"],
+                                     linestyle=dashes,
+                                     label=str(name).replace("-", " ")))
+    if handles:
+        ax.legend(handles=handles, loc="upper left", fontsize=S.FS["micro"],
+                  handlelength=2.2, borderpad=0.5, labelspacing=0.35,
+                  facecolor=S.PAPER, framealpha=0.85, frameon=True,
+                  edgecolor=S.RULE).set_zorder(30)
 
 
 def street_network(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
@@ -124,11 +161,11 @@ def landcover(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     if lc is None or lc.raster is None:
         _empty(ax, "no land cover data")
         return
-    from ..providers.landcover_worldcover import WORLDCOVER_CLASSES
+    from ..providers.landcover_worldcover import CLASS_COLOURS, CLASSES
 
     arr = np.asarray(lc.raster["array"])
-    codes = sorted(WORLDCOVER_CLASSES)
-    colours = [S.WORLDCOVER_COLOURS.get(WORLDCOVER_CLASSES[c], "#dddddd") for c in codes]
+    codes = sorted(CLASSES)
+    colours = [CLASS_COLOURS.get(c, "#dddddd") for c in codes]
     bounds = [c - 0.5 for c in codes] + [codes[-1] + 0.5]
     cmap = ListedColormap(colours)
     norm = BoundaryNorm(bounds, cmap.N)
@@ -152,7 +189,7 @@ def orientation_rose(ax: Axes, metrics: dict[str, Any]) -> None:
     ax.bar(theta, counts, width=width * 0.92, bottom=0.0, color=S.INK,
            edgecolor="none", align="edge")
     _polar_furniture(ax)
-    phi = (metrics.get("street") or {}).get("orientation_order")
+    phi = (metrics.get("street") or {}).get("orientation_order_phi")
     if phi is not None:
         ax.text(0.5, -0.12, f"order $\\varphi$ = {phi:.2f}", transform=ax.transAxes,
                 ha="center", fontsize=S.FS["small"], color=S.MUTED)
@@ -172,7 +209,9 @@ def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
     theta = np.arange(n_dir) * width
     greys = ["#e0ddd6", "#bdb8ad", "#918a7d", "#635c50", "#332f27"]
     bottom = np.zeros(n_dir)
-    labels = rose.get("speed_labels") or [f"band {i}" for i in range(freqs.shape[1])]
+    labels = rose.get("speed_bin_labels") or rose.get("speed_labels") or [
+        f"band {i}" for i in range(freqs.shape[1])
+    ]
     for j in range(freqs.shape[1]):
         ax.bar(theta, freqs[:, j], width=width * 0.92, bottom=bottom,
                color=greys[j % len(greys)], edgecolor="none", align="edge",
@@ -237,8 +276,8 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
     what a GIS specialist would otherwise ask about.
     """
     lu = metrics.get("landuse") or {}
-    osm = lu.get("osm_fractions") or {}
-    cover = lu.get("landcover_fractions") or {}
+    osm = _osm_landuse_fractions(lu)
+    cover = _landcover_fractions(lu)
     if not osm and not cover:
         _empty(ax, "no land use data")
         return
@@ -247,7 +286,7 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
     if osm:
         rows.append(("OSM land use", osm, S.LANDUSE_COLOURS))
     if cover:
-        rows.append(("ESA WorldCover", cover, S.WORLDCOVER_COLOURS))
+        rows.append(("ESA WorldCover", cover, _landcover_palette()))
 
     S.strip(ax)
     ax.set_aspect("auto")
@@ -270,6 +309,52 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
             left += val
         ax.text(0, i + 0.36, label, fontsize=S.FS["micro"], color=S.MUTED, va="bottom")
     ax.invert_yaxis()
+
+
+def _osm_landuse_fractions(lu: dict[str, Any]) -> dict[str, float]:
+    """Unpack the flat `landuse_<class>_fraction` keys the metric emits.
+
+    The unmapped slice is included deliberately, so the bar sums to 1.0 and the
+    reader sees how much of the AOI OSM simply has no answer for.
+    """
+    out: dict[str, float] = {}
+    for key, val in lu.items():
+        if not key.startswith("landuse_") or not key.endswith("_fraction"):
+            continue
+        if not isinstance(val, (int, float)):
+            continue
+        out[key[len("landuse_"):-len("_fraction")]] = float(val)
+    return out
+
+
+def _landcover_palette() -> dict[str, str]:
+    """Class name to colour, derived from the provider so the raster panel and
+    the bar can never disagree about what green means."""
+    try:
+        from ..providers.landcover_worldcover import CLASS_COLOURS, CLASSES
+    except ImportError:
+        return {}
+    return {name: CLASS_COLOURS.get(code, "#dddddd") for code, name in CLASSES.items()}
+
+
+def _landcover_fractions(lu: dict[str, Any]) -> dict[str, float]:
+    """Unpack `landcover_class_<code>_fraction` into readable class names."""
+    try:
+        from ..providers.landcover_worldcover import CLASSES
+    except ImportError:
+        return {}
+    out: dict[str, float] = {}
+    for key, val in lu.items():
+        if not key.startswith("landcover_class_") or not key.endswith("_fraction"):
+            continue
+        if not isinstance(val, (int, float)):
+            continue
+        try:
+            code = int(key[len("landcover_class_"):-len("_fraction")])
+        except ValueError:
+            continue
+        out[CLASSES.get(code, f"class {code}")] = float(val)
+    return out
 
 
 def _dark(hex_colour: str) -> bool:

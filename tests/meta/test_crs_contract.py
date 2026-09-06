@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 
 import pytest
+from affine import Affine
 from pyproj import CRS
 
 from sce.aoi import AOI, WGS84, NonMetricCRSError, assert_metric_crs
@@ -91,46 +92,89 @@ def _geographic_layer_inputs():
     return gdf
 
 
+def _geographic_layers(required: tuple[str, ...]):
+    """Build a LayerResult for each required layer, all in EPSG:4326.
+
+    This is the exact shape a metric is called with in production, only with
+    degrees where metres belong. A metric that gets past this has an area or a
+    length computed in square degrees somewhere inside it.
+    """
+    import geopandas as gpd
+    import numpy as np
+    from shapely.geometry import LineString, Polygon
+
+    from sce.types import LayerResult
+
+    shapes = {
+        "streets": [LineString([(0.0, 0.0), (0.01, 0.0)]), LineString([(0.0, 0.0), (0.0, 0.01)])],
+        "buildings": [Polygon([(0, 0), (0.001, 0), (0.001, 0.001), (0, 0.001)])],
+        "landuse": [Polygon([(0, 0), (0.002, 0), (0.002, 0.002), (0, 0.002)])],
+        "amenities": [LineString([(0.0, 0.0), (0.001, 0.0)]).centroid],
+    }
+    layers: dict[str, LayerResult] = {}
+    for layer in required:
+        if layer == "terrain":
+            layers[layer] = LayerResult(
+                layer="terrain",
+                provider="test",
+                raster={
+                    "array": np.zeros((8, 8), dtype=float),
+                    "transform": Affine(0.0003, 0.0, 0.0, 0.0, -0.0003, 0.0),
+                    "crs": CRS.from_epsg(4326),
+                    "nodata": None,
+                    "res": (0.0003, 0.0003),
+                },
+            )
+            continue
+        if layer == "climate":
+            layers[layer] = LayerResult(layer="climate", provider="test", data={})
+            continue
+        geoms = shapes.get(layer, shapes["buildings"])
+        gdf = gpd.GeoDataFrame({"geometry": geoms}, crs=WGS84)
+        if layer == "buildings":
+            gdf["height_m"] = [12.0] * len(geoms)
+            gdf["height_source"] = ["height"] * len(geoms)
+        if layer in ("landuse", "amenities"):
+            gdf["class"] = ["residential"] * len(geoms)
+            gdf["category"] = ["transport"] * len(geoms)
+        layers[layer] = LayerResult(layer=layer, provider="test", gdf=gdf)
+    return layers
+
+
 @pytest.mark.skipif(METRICS is None, reason="sce.metrics.METRICS not yet available")
-@pytest.mark.parametrize("metric_name", [m[0] for m in _METRIC_ITEMS] or ["__none__"])
+@pytest.mark.parametrize("metric_name", sorted(METRICS or {}) or ["__none__"])
 def test_every_metric_rejects_geographic_input(metric_name):
+    """Every registered metric must refuse degrees, at the door, before anything
+    else runs.
+
+    Metrics are called exactly as `compute_all` calls them: `fn(layers, aoi)`.
+    The AOI is real and projected; only the layer geometry is geographic, which
+    is the realistic failure mode - a provider that forgot to reproject.
+    """
     if METRICS is None:
         pytest.skip("sce.metrics.METRICS not yet available")
     fn = METRICS[metric_name]
-    gdf = _geographic_layer_inputs()
+    required = getattr(fn, "REQUIRES", ())
+    if not required:
+        pytest.skip(f"metric {metric_name!r} declares no required layers to poison")
+    if not getattr(fn, "TOUCHES_GEOMETRY", True):
+        pytest.skip(f"metric {metric_name!r} declares it touches no geometry")
 
-    # Metrics have varying signatures; try the plausible call shapes and
-    # require that at least one of them is rejected with NonMetricCRSError.
-    # A metric that raises TypeError for every shape we try has a signature
-    # this harness doesn't yet know how to drive — that's a gap to fix here,
-    # not a pass.
-    attempts = [
-        lambda: fn(gdf),
-        lambda: fn(gdf, gdf),
-        lambda: fn(aoi=gdf, layers={}),
-        lambda: fn({"streets": gdf}, gdf),
-    ]
-    raised_non_metric = False
-    last_type_errors = 0
-    for attempt in attempts:
-        try:
-            attempt()
-        except NonMetricCRSError:
-            raised_non_metric = True
-            break
-        except TypeError:
-            last_type_errors += 1
-            continue
-        except Exception:  # noqa: BLE001 - any other error means it got past the CRS check
-            pytest.fail(
-                f"metric {metric_name!r} did not raise NonMetricCRSError on geographic input "
-                "(it raised something else, meaning it processed the geometry first)"
-            )
-    if not raised_non_metric and last_type_errors == len(attempts):
-        pytest.skip(
-            f"metric {metric_name!r} signature not covered by this harness's call shapes"
-        )
-    assert raised_non_metric, f"metric {metric_name!r} accepted geographic (EPSG:4326) input"
+    aoi = AOI.from_point(3.0, 40.0, 1000.0, name="crs-contract")
+    layers = _geographic_layers(required)
+
+    with pytest.raises(NonMetricCRSError):
+        fn(layers, aoi)
+
+
+@pytest.mark.skipif(METRICS is None, reason="sce.metrics.METRICS not yet available")
+def test_every_metric_declares_its_required_layers():
+    """`compute_all` skips on REQUIRES, so a metric without it silently runs on
+    absent data and returns nonsense instead of nothing."""
+    if METRICS is None:
+        pytest.skip("sce.metrics.METRICS not yet available")
+    missing = [n for n, fn in METRICS.items() if not hasattr(fn, "REQUIRES")]
+    assert not missing, f"metrics without a REQUIRES tuple: {missing}"
 
 
 # ---------------------------------------------------------------------------
