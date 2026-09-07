@@ -191,7 +191,7 @@ def test_nearest_transit_distance_is_none_without_transport_amenity():
 
 
 def test_transport_categories_constant_covers_vocabulary_transport_term():
-    # CONTRACT.md fixes the amenities vocabulary as food/retail/education/
+    # CONTRIBUTING.md fixes the amenities vocabulary as food/retail/education/
     # health/transport/civic/leisure/other; "transport" must be recognised.
     assert "transport" in TRANSPORT_CATEGORIES
 

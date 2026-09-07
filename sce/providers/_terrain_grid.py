@@ -3,7 +3,7 @@
 Both the Copernicus GLO-30 DSM provider and the FABDEM DTM provider read one
 or more geographic tiles, merge them, and must reproject that merged array
 onto a square metre grid in the AOI's own CRS *before* any slope computation
-happens downstream (CONTRACT.md trap #3: "reproject the DEM window to a
+happens downstream (CONTRIBUTING.md trap #3: "reproject the DEM window to a
 square metre grid before computing slope"). Extracted here once so a second
 raster terrain provider does not copy-paste the first one's windowing and
 reprojection code.

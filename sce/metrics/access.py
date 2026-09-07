@@ -98,7 +98,7 @@ def access_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
         assert_metric_crs(gdf.crs, where="access_metrics.transit")
         col = "category" if "category" in gdf.columns else None
         if col is not None:
-            # The amenities provider's vocabulary is fixed in CONTRACT.md:
+            # The amenities provider's vocabulary is fixed in CONTRIBUTING.md:
             # food, retail, education, health, transport, civic, leisure, other.
             # The older names are kept only so a stale fixture still resolves.
             transit_rows = gdf[gdf[col].astype(str).str.lower().isin(TRANSPORT_CATEGORIES)]

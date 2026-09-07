@@ -1,8 +1,8 @@
 """Unit tests for sce/aoi.py: the CRS spine.
 
-sce/aoi.py is a "do not modify" spine file (see CONTRACT.md); these tests
+sce/aoi.py is a "do not modify" spine file (see CONTRIBUTING.md); these tests
 exercise its documented public surface without assuming anything about its
-internals beyond what CONTRACT.md promises.
+internals beyond what CONTRIBUTING.md promises.
 """
 
 from __future__ import annotations

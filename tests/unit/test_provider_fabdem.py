@@ -1,6 +1,6 @@
 """FABDEM provider tests. Zero network: local tiles only.
 
-Covers the opt-in / non-commercial contract in CONTRACT.md and the honest
+Covers the opt-in / non-commercial contract in CONTRIBUTING.md and the honest
 "no automated download" behaviour described in the module docstring of
 sce/providers/terrain_fabdem.py.
 """
