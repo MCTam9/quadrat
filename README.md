@@ -179,6 +179,9 @@ skipped unless explicitly opted into, with its licence printed on the sheet.
 See [ATTRIBUTION.md](ATTRIBUTION.md), which is generated from the provider
 registry rather than maintained by hand.
 
+The MIT licence in [LICENSE](LICENSE) covers this source code only. Data the
+tool retrieves carries its own terms, and some of those are share-alike.
+
 ## Roadmap
 
 Global Wind Atlas for coastal and mountain sites where ERA5 is too coarse.

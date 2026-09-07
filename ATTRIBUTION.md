@@ -1,6 +1,11 @@
 # Attribution
 
-Data sources and licences used by this tool.
+Data sources and licences used by this tool. Generated from the provider
+registry by `sce attribution`; do not edit by hand.
+
+The tool's own source code is MIT (see LICENSE). That is separate from, and does
+not override, the terms below. Where they conflict, the data licence governs the
+data.
 
 ## Notice: OpenStreetMap-derived data
 
