@@ -160,6 +160,16 @@ right range, and UK constraint geometry must actually fall inside the requested
 site. They skip rather than fail when a host throttles the run, because a
 weekly job that cries wolf is one nobody reads.
 
+## Adding a provider
+
+The provider seam is the point of the architecture: a data source declares its
+layer, licence and rank, says where on earth it is available, and returns
+geometry already in the site's metric projection. The registry does the rest,
+including falling through when one source is throttled or has no coverage.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contract and the traps it exists
+to prevent.
+
 ## Licences
 
 Every source is free to use. Two conditions matter and both are enforced in

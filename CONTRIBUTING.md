@@ -1,12 +1,22 @@
-# Build contract — read before writing any code
+# Contributing: the contract every provider and metric is written against
 
-Project root: `/Users/Vincent/Code/urban-grain`. Python: `.venv/bin/python` (3.14.6).
-Run tests with `.venv/bin/python -m pytest`.
+Read this before adding a provider, a metric or an export. It is the shape the
+whole codebase assumes, and most of it exists because getting it wrong is
+expensive to undo later.
 
-Site Context Report (`sce`): coordinates + radius anywhere on earth -> an A3 sheet
-plus machine-readable data covering urban morphology, terrain, climate, access.
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
-## Already built — DO NOT MODIFY these files
+Site Context Report (`sce`): coordinates and a radius anywhere on earth to an A3
+sheet plus machine-readable data covering urban morphology, terrain, climate and
+access.
+
+## The spine
+
+These four modules define the contract. Changing them changes everything
+downstream, so change them deliberately and expect the meta-tests to argue.
 
 - `sce/aoi.py` — the CRS spine. `AOI.from_point(lon, lat, radius_m, name)`.
   Key API: `aoi.crs` (pyproj CRS, always projected metres), `aoi.geometry`
@@ -17,7 +27,7 @@ plus machine-readable data covering urban morphology, terrain, climate, access.
   Also `assert_metric_crs(crs, where=...)` which raises `NonMetricCRSError`
   on any geographic CRS. `WGS84` is exported from this module.
 - `sce/types.py` — `Source`, `LayerResult`, `Provider`.
-- `sce/cache.py` — `Cache(root=None, offline=False)`, with `.key(*parts)`,
+- `sce/cache.py` — `Cache(root=None, offline=None)`, with `.key(*parts)`,
   `.get_bytes(key, suffix, producer)`, `.get_json(key, producer)`.
   `producer` is a zero-arg callable returning `(payload, meta_dict)`.
   When `cache.offline` is True and there is no hit, it raises `FileNotFoundError`.
@@ -87,6 +97,7 @@ numpy, pandas, requests, networkx, pyarrow, ezdxf 1.4.4, click.
 
 ## Tests
 
-Tests go in `tests/unit/`. Zero network in unit tests. Use synthetic geometry
+Tests go in `tests/unit/`. Tests that hit the network go in `tests/live/`,
+marked `@pytest.mark.live`, and are excluded from a plain `pytest` run. Zero network in unit tests. Use synthetic geometry
 with analytically known answers wherever possible (e.g. a perfect 1 km grid has
 orientation order phi = 1.0). Do not snapshot floats you have not reasoned about.

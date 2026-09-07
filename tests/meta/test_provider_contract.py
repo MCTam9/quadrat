@@ -1,4 +1,4 @@
-"""Every provider anyone registers must obey the shape in CONTRACT.md.
+"""Every provider anyone registers must obey the shape in CONTRIBUTING.md.
 
 Runs against whatever is registered at import time of `sce.providers`. Skips
 cleanly while that package is still empty or partially written.
@@ -21,14 +21,14 @@ LAYERS = set(_LAYER_TUPLE)
 
 
 def test_the_layer_vocabulary_is_documented():
-    """CONTRACT.md is what the next provider author reads. A layer the code
+    """CONTRIBUTING.md is what the next provider author reads. A layer the code
     accepts but the contract never names is a layer nobody knows exists."""
     from pathlib import Path
 
-    contract = Path(__file__).resolve().parents[2] / "CONTRACT.md"
+    contract = Path(__file__).resolve().parents[2] / "CONTRIBUTING.md"
     text = contract.read_text()
     undocumented = sorted(layer for layer in LAYERS if f"`{layer}`" not in text)
-    assert not undocumented, f"layers missing from CONTRACT.md: {undocumented}"
+    assert not undocumented, f"layers missing from CONTRIBUTING.md: {undocumented}"
 
 
 def _providers():
