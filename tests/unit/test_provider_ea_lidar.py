@@ -72,10 +72,10 @@ def test_fetch_builds_ndsm(monkeypatch, tmp_path):
     res = EaLidarBuildingHeightProvider().fetch(_aoi(-0.128, 51.507), Cache(tmp_path, offline=False))
     assert res.layer == "building_height"
     r = res.raster
-    assert r["kind"] == "ndsm" and res.data["kind"] == "ndsm"
-    assert r["crs"] == _aoi(-0.128, 51.507).crs
-    assert r["res"] == (1.0, 1.0)
-    finite = r["array"][np.isfinite(r["array"])]
+    assert r.kind == "ndsm" and res.data["kind"] == "ndsm"
+    assert r.crs == _aoi(-0.128, 51.507).crs
+    assert r.res == (1.0, 1.0)
+    finite = r.array[np.isfinite(r.array)]
     assert finite.min() >= 0.0
     assert np.median(finite) == pytest.approx(12.0, abs=0.01)
     assert res.data["mean_height_m"] == pytest.approx(12.0, abs=0.01)

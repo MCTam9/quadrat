@@ -22,6 +22,7 @@ import numpy as np
 from shapely import make_valid
 
 from ..aoi import AOI, assert_metric_crs
+from ..raster import SiteRaster
 from ..types import LayerResult
 from ..vocab import LANDUSE_IDS, normalise_landuse
 
@@ -95,13 +96,10 @@ def _osm_landuse_fractions(gdf, aoi: AOI) -> dict[str, Any]:
     return result
 
 
-def _landcover_fractions(raster: dict[str, Any] | None) -> dict[str, Any]:
+def _landcover_fractions(raster: SiteRaster | None) -> dict[str, Any]:
     if raster is None:
         return {"landcover_source": "no ESA WorldCover raster available"}
-    array = raster["array"]
-    nodata = raster.get("nodata")
-    valid_mask = np.ones_like(array, dtype=bool) if nodata is None else array != nodata
-    valid = array[valid_mask]
+    valid = raster.values_inside()
     total = valid.size
     result: dict[str, Any] = {}
     if total == 0:
@@ -120,7 +118,7 @@ def landuse_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     if landuse is not None and landuse.gdf is not None:
         assert_metric_crs(landuse.gdf.crs, where="landuse_metrics")
     elif landcover is not None and landcover.raster is not None:
-        assert_metric_crs(landcover.raster.get("crs"), where="landuse_metrics")
+        assert_metric_crs(landcover.raster.crs, where="landuse_metrics")
     else:
         assert_metric_crs(aoi.crs, where="landuse_metrics")
 

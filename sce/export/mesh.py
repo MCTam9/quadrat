@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from ..raster import SiteRaster
 from ..types import LayerResult
 from ._georef import georef_dict, local_origin
 
@@ -53,15 +54,10 @@ def _require_trimesh():
 class _Terrain:
     """Decimated height grid in local metres, with nearest-cell sampling."""
 
-    def __init__(self, raster: dict, aoi: Any, origin: tuple[float, float]):
-        arr = np.asarray(raster["array"], dtype="float64")
-        if arr.ndim == 3:
-            arr = arr[0]
-        nodata = raster.get("nodata")
-        if nodata is not None and not np.isnan(nodata):
-            arr = np.where(arr == nodata, np.nan, arr)
+    def __init__(self, raster: SiteRaster, aoi: Any, origin: tuple[float, float]):
+        arr = raster.float_array()
         arr = np.where(np.isfinite(arr), arr, np.nan)
-        t = raster["transform"]
+        t = raster.transform
         rows, cols = arr.shape
         # Cell-centre coordinates in the AOI CRS (north-up grids; rotation ignored).
         xs = t.c + (np.arange(cols) + 0.5) * t.a

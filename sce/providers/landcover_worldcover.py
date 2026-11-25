@@ -22,9 +22,9 @@ from rasterio.merge import merge as rio_merge
 from rasterio.warp import Resampling, reproject
 from rasterio.windows import from_bounds
 
+from ..raster import SiteRaster
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import inside_aoi
 
 BUCKET_HTTPS = "https://esa-worldcover.s3.eu-central-1.amazonaws.com"
 TILE_SIZE_DEG = 3
@@ -137,9 +137,6 @@ class WorldCoverProvider(Provider):
             dst_nodata=0,
         )
 
-        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
-        dst_arr[~inside] = 0
-
         source = Source(
             name="ESA WorldCover 10m v200 (2021)",
             url=BUCKET_HTTPS,
@@ -156,13 +153,14 @@ class WorldCoverProvider(Provider):
             LayerResult(
                 layer=self.layer,
                 provider=self.name,
-                raster={
-                    "array": dst_arr,
-                    "transform": dst_transform,
-                    "crs": aoi.crs,
-                    "nodata": 0,
-                    "res": (RESOLUTION_M, RESOLUTION_M),
-                },
+                raster=SiteRaster.from_array(
+                    dst_arr,
+                    dst_transform,
+                    aoi.crs,
+                    square=aoi,
+                    nodata=0,
+                    blank_outside=True,
+                ),
                 data={
                     "class_colours": {CLASSES[k]: v for k, v in CLASS_COLOURS.items()},
                 },
@@ -177,19 +175,19 @@ class WorldCoverProvider(Provider):
 
     def summarise(self, result: LayerResult, aoi) -> LayerResult:
         """Class fractions over the cells inside the square; coverage = 1 - unclassified."""
-        arr = np.asarray(result.raster["array"])
-        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
-        total = max(int(inside.sum()), 1)
+        raster = result.raster
+        total = max(raster.n_inside, 1)
+        classified = raster.values_inside()
         fractions: dict[str, float] = {}
         for code, cls_name in CLASSES.items():
-            count = int(np.count_nonzero((arr == code) & inside))
+            count = int(np.count_nonzero(classified == code))
             if count:
                 fractions[cls_name] = count / total
-        unclassified = int(np.count_nonzero((arr == 0) & inside)) / total
+        unclassified = (raster.n_inside - classified.size) / total
         if unclassified:
             fractions["Unclassified/no data"] = unclassified
         data = {**(result.data or {}), "class_fractions": fractions}
-        return replace(result, data=data, coverage=1.0 - unclassified, degraded=False, findings=[])
+        return replace(result, data=data, coverage=raster.share_known(), degraded=False, findings=[])
 
     @staticmethod
     def _make_producer(url: str, w: float, s: float, e: float, n: float, lat: int, lon: int):

@@ -14,12 +14,9 @@ metric never sees a number that belongs to a different area.
 
 from __future__ import annotations
 
-import math
 from dataclasses import replace
 from typing import Any
 
-import numpy as np
-from affine import Affine
 from pyproj import CRS
 
 from .aoi import AOI
@@ -35,31 +32,6 @@ def contains(outer: AOI, inner: AOI, tol_m: float = 0.5) -> bool:
     if CRS.from_user_input(outer.crs) != CRS.from_user_input(inner.crs):
         return False
     return outer.geometry.buffer(tol_m).contains(inner.geometry)
-
-
-def _clip_raster(raster: dict[str, Any], inner: AOI) -> dict[str, Any]:
-    """Window a north-up square-grid raster to the inner AOI bounds."""
-    array = np.asarray(raster["array"])
-    t: Affine = raster["transform"]
-    res_x, res_y = t.a, -t.e
-    minx, miny, maxx, maxy = inner.bounds_metric
-    col0 = max(0, math.floor((minx - t.c) / res_x))
-    col1 = min(array.shape[1], math.ceil((maxx - t.c) / res_x))
-    row0 = max(0, math.floor((t.f - maxy) / res_y))
-    row1 = min(array.shape[0], math.ceil((t.f - miny) / res_y))
-    window = array[row0:row1, col0:col1].copy()
-    new_t = Affine(t.a, t.b, t.c + col0 * res_x, t.d, t.e, t.f - row0 * res_y)
-    # The inner square is rotated inside its bounding box (true north vs grid
-    # north): blank the corner cells, as the providers do for the outer square.
-    from .providers._terrain_grid import inside_aoi
-
-    inside = inside_aoi(window.shape, new_t, inner)
-    nodata = raster.get("nodata")
-    if np.issubdtype(window.dtype, np.floating):
-        window[~inside] = np.nan
-    else:
-        window[~inside] = 0 if nodata is None or not np.isfinite(nodata) else nodata
-    return {**raster, "array": window, "transform": new_t}
 
 
 def _clip_graph(graph: Any, inner: AOI) -> Any:
@@ -80,7 +52,7 @@ def _clip_one(layer: str, result: LayerResult, inner: AOI) -> LayerResult:
     from .registry import REGISTRY
 
     gdf = inner.clip(result.gdf) if result.gdf is not None else None
-    raster = _clip_raster(result.raster, inner) if result.raster is not None else None
+    raster = result.raster.window(inner) if result.raster is not None else None
     data = result.data
     if layer == "streets" and data and data.get("graph") is not None:
         data = {**data, "graph": _clip_graph(data["graph"], inner)}

@@ -8,6 +8,8 @@ from typing import Any
 
 import geopandas as gpd
 
+from .raster import SiteRaster
+
 
 @dataclass
 class Source:
@@ -37,15 +39,15 @@ class Source:
 class LayerResult:
     """What every provider returns.
 
-    `gdf` is ALWAYS already in the AOI metric CRS. `raster` carries array plus
-    transform for terrain and land-cover providers. `coverage` is 0..1 where the
+    `gdf` is ALWAYS already in the AOI metric CRS. `raster` is a `SiteRaster` (grid plus the
+    square it describes) for terrain, land-cover and height providers. `coverage` is 0..1 where the
     provider can judge its own completeness, else None.
     """
 
     layer: str
     provider: str
     gdf: gpd.GeoDataFrame | None = None
-    raster: dict[str, Any] | None = None
+    raster: SiteRaster | None = None
     data: dict[str, Any] | None = None
     sources: list[Source] = field(default_factory=list)
     coverage: float | None = None

@@ -14,6 +14,7 @@ rhino3dm = pytest.importorskip("rhino3dm")
 
 from sce.aoi import AOI  # noqa: E402
 from sce.export.rhino import write_3dm  # noqa: E402
+from sce.raster import SiteRaster  # noqa: E402
 from sce.types import LayerResult, Source  # noqa: E402
 
 
@@ -47,7 +48,7 @@ def streets_gdf(aoi: AOI) -> gpd.GeoDataFrame:
 
 
 @pytest.fixture
-def terrain_raster(aoi: AOI) -> dict:
+def terrain_raster(aoi: AOI) -> SiteRaster:
     minx, miny, maxx, maxy = aoi.bounds_metric
     res = 10.0
     cols = int((maxx - minx) / res)
@@ -56,7 +57,7 @@ def terrain_raster(aoi: AOI) -> dict:
     row_idx, col_idx = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
     xs, ys = transform * (col_idx + 0.5, row_idx + 0.5)
     array = (xs - minx) / 100.0  # a tilted plane, 1 m rise per 100 m eastward
-    return {"array": array, "transform": transform, "crs": aoi.crs, "nodata": None, "res": (res, res)}
+    return SiteRaster.from_array(array, transform, aoi.crs, square=aoi)
 
 
 @pytest.fixture

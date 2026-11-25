@@ -22,7 +22,7 @@ downstream, so change them deliberately and expect the meta-tests to argue.
   Key API: `aoi.crs` (pyproj CRS, always projected metres), `aoi.geometry`
   (shapely Polygon in `aoi.crs`: a square aligned to TRUE north, so in UTM it sits
   rotated by the grid convergence, up to ~3 deg; never assume an axis-aligned box,
-  and blank raster cells outside it with `_terrain_grid.inside_aoi`), `aoi.centroid_lonlat` -> (lon, lat),
+  and rasters carry it: `SiteRaster.inside()`), `aoi.centroid_lonlat` -> (lon, lat),
   `aoi.bbox_wgs84` -> (w, s, e, n), `aoi.geometry_wgs84`, `aoi.area_m2`,
   `aoi.area_ha`, `aoi.area_km2`, `aoi.epsg` (e.g. "EPSG:32642"),
   `aoi.to_metric(gdf)`, `aoi.clip(gdf)`, `aoi.key()`, `aoi.provenance()`.
@@ -54,7 +54,7 @@ user opts in). Implement:
   already confined to `aoi`, set `coverage` (0..1), `degraded`, `findings` and any
   square-dependent `data` (mean height, class fractions, elevation summary).
   It runs at fetch **and** whenever the web app clips a smaller square, so each
-  rule lives once. Count raster cells with `_terrain_grid.inside_aoi`, never
+  rule lives once. Take raster figures from `SiteRaster` (`share_known()`, `values_inside()`), never
   over the whole array.
 
 Register at import time at the bottom of the module: `REGISTRY.register(MyProvider())`.
@@ -62,9 +62,10 @@ Register at import time at the bottom of the module: `REGISTRY.register(MyProvid
 `LayerResult` fields: `layer, provider, gdf, raster, data, sources, coverage,
 degraded, notes, findings`. `notes` are facts that hold for any square (licence
 caveats, "fell back after"); `findings` depend on the square and are rewritten
-by `summarise`. For rasters set `raster = {"array": np.ndarray, "transform":
-affine.Affine, "crs": <metric CRS>, "nodata": value, "res": (dx, dy)}` with the
-array **already reprojected to the AOI metric CRS on a square grid**.
+by `summarise`. For rasters set `raster = SiteRaster.from_array(array, transform, aoi.crs, square=aoi,
+nodata=..., kind=...)` (`sce/raster.py`) with the array **already reprojected to the AOI metric CRS on a
+square grid**. `SiteRaster` owns the true-north mask and the nodata rule (NaN, sentinel or 0), so never
+index `.array` for a coverage, mean or fraction: use `share_known()` and `values_inside(pred)`.
 
 ## Layer names (fixed vocabulary)
 

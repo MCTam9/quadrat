@@ -18,6 +18,7 @@ from sce.export.dossier import write_dossier
 from sce.export.dxf import write_dxf
 from sce.export.gpkg import write_gpkg
 from sce.export.qml import write_qml_styles
+from sce.raster import SiteRaster
 from sce.registry import Registry
 from sce.types import LayerResult, Provider, Source
 
@@ -68,7 +69,7 @@ def landuse_gdf(aoi: AOI) -> gpd.GeoDataFrame:
 
 
 @pytest.fixture
-def terrain_raster(aoi: AOI) -> dict:
+def terrain_raster(aoi: AOI) -> SiteRaster:
     minx, miny, maxx, maxy = aoi.bounds_metric
     res = 10.0
     cols = int((maxx - minx) / res)
@@ -78,7 +79,7 @@ def terrain_raster(aoi: AOI) -> dict:
     xs, ys = transform * (col_idx + 0.5, row_idx + 0.5)
     # A tilted plane: elevation rises 1m per 100m eastward. Known slope, known contours.
     array = (xs - minx) / 100.0
-    return {"array": array, "transform": transform, "crs": aoi.crs, "nodata": None, "res": (res, res)}
+    return SiteRaster.from_array(array, transform, aoi.crs, square=aoi)
 
 
 @pytest.fixture

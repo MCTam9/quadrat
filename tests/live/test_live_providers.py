@@ -136,7 +136,7 @@ def test_copernicus_elevation_is_in_the_right_range(site, low, high, cache):
 
     result = _fetch("terrain", site, cache)
     assert result is not None and result.raster is not None
-    arr = np.asarray(result.raster["array"], dtype=float)
+    arr = result.raster.float_array()
     assert low < float(np.nanmean(arr)) < high
 
 
@@ -146,9 +146,9 @@ def test_terrain_raster_is_square_and_metric(cache):
     from pyproj import CRS
 
     result = _fetch("terrain", "tashkent", cache)
-    tr = result.raster["transform"]
+    tr = result.raster.transform
     assert abs(abs(tr.a) - abs(tr.e)) < 1e-6, "raster pixels are not square"
-    assert not CRS.from_user_input(result.raster["crs"]).is_geographic
+    assert not CRS.from_user_input(result.raster.crs).is_geographic
 
 
 # --- ESA WorldCover --------------------------------------------------------

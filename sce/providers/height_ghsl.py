@@ -51,9 +51,9 @@ from rasterio.io import MemoryFile
 from rasterio.merge import merge as rio_merge
 from rasterio.warp import Resampling, reproject
 
+from ..raster import SiteRaster
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import inside_aoi
 
 MOLLWEIDE = CRS.from_user_input("ESRI:54009")
 BASE_URL = (
@@ -148,9 +148,6 @@ class GhslBuildingHeightProvider(Provider):
             dst_nodata=np.nan,
         )
 
-        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
-        dst_arr[~inside] = np.nan
-
         source = Source(
             name="GHS-BUILT-H R2023A (ANBH), European Commission JRC",
             url=BASE_URL,
@@ -168,13 +165,14 @@ class GhslBuildingHeightProvider(Provider):
             LayerResult(
                 layer=self.layer,
                 provider=self.name,
-                raster={
-                    "array": dst_arr,
-                    "transform": dst_transform,
-                    "crs": aoi.crs,
-                    "nodata": float("nan"),
-                    "res": (RESOLUTION_M, RESOLUTION_M),
-                },
+                raster=SiteRaster.from_array(
+                    dst_arr,
+                    dst_transform,
+                    aoi.crs,
+                    square=aoi,
+                    nodata=float("nan"),
+                    blank_outside=True,
+                ),
                 sources=[source],
                 notes=[
                     "GHS-BUILT-H ANBH is a 2018-epoch 100 m average net building height raster, a "
@@ -189,12 +187,9 @@ class GhslBuildingHeightProvider(Provider):
 
     def summarise(self, result: LayerResult, aoi) -> LayerResult:
         """Coverage and mean (cells > 0) over the cells inside the square."""
-        arr = np.asarray(result.raster["array"], dtype=float)
-        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
-        finite = np.isfinite(arr) & inside
-        n_inside = int(inside.sum())
-        coverage = float(finite.sum()) / n_inside if n_inside else 0.0
-        valid = arr[finite & (arr > 0.0)]
+        raster = result.raster
+        coverage = raster.share_known()
+        valid = raster.values_inside(lambda v: v > 0.0)
         data = {**(result.data or {}), "mean_height_m": float(valid.mean()) if valid.size else None}
         return replace(result, data=data, coverage=coverage, degraded=coverage < 0.5, findings=[])
 

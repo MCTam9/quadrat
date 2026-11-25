@@ -12,6 +12,7 @@ from shapely.geometry import LineString, Polygon, box
 
 from sce.aoi import AOI
 from sce.export.geojson import write_geojson
+from sce.raster import SiteRaster
 from sce.types import LayerResult, Source
 
 
@@ -61,7 +62,7 @@ def landuse_gdf(aoi: AOI) -> gpd.GeoDataFrame:
 
 
 @pytest.fixture
-def terrain_raster(aoi: AOI) -> dict:
+def terrain_raster(aoi: AOI) -> SiteRaster:
     minx, miny, maxx, maxy = aoi.bounds_metric
     res = 10.0
     cols = int((maxx - minx) / res)
@@ -71,7 +72,7 @@ def terrain_raster(aoi: AOI) -> dict:
     xs, ys = transform * (col_idx + 0.5, row_idx + 0.5)
     # A tilted plane: elevation rises 1m per 100m eastward. Known slope, known contours.
     array = (xs - minx) / 100.0
-    return {"array": array, "transform": transform, "crs": aoi.crs, "nodata": None, "res": (res, res)}
+    return SiteRaster.from_array(array, transform, aoi.crs, square=aoi)
 
 
 @pytest.fixture
