@@ -48,13 +48,21 @@ user opts in). Implement:
   return True only when `aoi.centroid_lonlat` falls in GB.
 - `fetch(self, aoi, cache) -> LayerResult` — returns geometry **already in
   `aoi.crs`**. Never return WGS84. Attach at least one `Source(name, url,
-  licence, licence_url=..., commercial_ok=...)`. Set `coverage` (0..1) and
-  `degraded=True` where the provider can judge its own completeness.
+  licence, licence_url=..., commercial_ok=...)`. End with
+  `return self.summarise(result, aoi)`.
+- `summarise(self, result, aoi) -> LayerResult` — pure, no I/O: given a result
+  already confined to `aoi`, set `coverage` (0..1), `degraded`, `findings` and any
+  square-dependent `data` (mean height, class fractions, elevation summary).
+  It runs at fetch **and** whenever the web app clips a smaller square, so each
+  rule lives once. Count raster cells with `_terrain_grid.inside_aoi`, never
+  over the whole array.
 
 Register at import time at the bottom of the module: `REGISTRY.register(MyProvider())`.
 
 `LayerResult` fields: `layer, provider, gdf, raster, data, sources, coverage,
-degraded, notes`. For rasters set `raster = {"array": np.ndarray, "transform":
+degraded, notes, findings`. `notes` are facts that hold for any square (licence
+caveats, "fell back after"); `findings` depend on the square and are rewritten
+by `summarise`. For rasters set `raster = {"array": np.ndarray, "transform":
 affine.Affine, "crs": <metric CRS>, "nodata": value, "res": (dx, dy)}` with the
 array **already reprojected to the AOI metric CRS on a square grid**.
 
@@ -99,9 +107,18 @@ invent a number: when coverage is too low, return None and report the coverage.
   `EXPORTERS` table. A new export format is one writer in `sce/export/` with the
   signature `write_x(path, layers, aoi) -> Path` plus one `EXPORTERS` entry; the
   CLI `--export` choices and the web API pick it up from there.
-- `sce/clip.py` — `clip_layers(layers, outer, inner)`. Anything a provider
-  derived over its whole AOI (coverage, GHSL mean height, elevation summary) must
-  be recomputed here for the inner square, or the live analysis lies.
+- `sce/clip.py` — `clip_layers(layers, outer, inner)`: geometry only (clip,
+  window and mask, truncate the street graph), then the named provider's
+  `summarise` for the inner square. No per-layer rules here.
+- `sce/site.py` — `Site`: one padded fetch (`Site.load`, fetch injected), one
+  clip per square (`layers_for`, with building use attached), and the views the
+  web app needs: `analyse`, `preview`, `climate`, `export`. The API is HTTP only;
+  test site behaviour through `Site` with fixture layers
+  (`tests/unit/_site_fixtures.py`).
+- `sce/vocab.py` — the only land-use, building-use and height-source vocabulary.
+  Providers emit it, metrics/exports/sheet key on it, and the web app's
+  `web/lib/vocab.generated.ts` is generated from it
+  (`python -m sce.vocab --ts > web/lib/vocab.generated.ts`; a test fails when stale).
 - `sce/heights.py` — fills missing building heights from a per-building-resolution
   height raster (EA LiDAR nDSM). Never fills a building it cannot measure.
 - Shared helpers: `sce/export/_contours.py` (one contour implementation for every
