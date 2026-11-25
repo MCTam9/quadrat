@@ -14,17 +14,6 @@ import { SquareControls, SunTimes } from "./SquareCard";
 
 export type Tab = "analysis" | "climate";
 
-/** CAD-style north arrow: half the head filled, half outlined. */
-function NorthArrow() {
-  return (
-    <svg viewBox="0 0 24 44" className="h-11 w-6 shrink-0" role="img" aria-label="North is up">
-      <path d="M12 2 12 28 3 34Z" fill="var(--ink)" />
-      <path d="M12 2 21 34 12 28Z" fill="none" stroke="var(--ink)" strokeWidth="1.25" strokeLinejoin="round" />
-      <text x="12" y="43" textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--ink)">N</text>
-    </svg>
-  );
-}
-
 interface Props {
   square: SquareState | null;
   onSquare: (s: SquareState) => void;
@@ -123,12 +112,11 @@ export function SitePanel(p: Props) {
         ) : (
           <>
             <header className="shrink-0 space-y-3 border-b border-edge p-4 max-sm:pt-1">
-              <div className="flex items-start gap-3 max-sm:hidden">
-                <div className="min-w-0 flex-1">
+              <div className="max-sm:hidden">
+                <div className="min-w-0">
                   <h1 className="wide text-2xl font-bold leading-tight">{title}</h1>
                   {p.name?.place && <p className="mt-0.5 text-sm text-graphite">{p.name.place}</p>}
                 </div>
-                <NorthArrow />
               </div>
               <SquareControls square={sq} onChange={p.onSquare} />
             </header>
