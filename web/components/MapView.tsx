@@ -21,7 +21,7 @@ import {
 } from "@/lib/layers";
 import { moveCentre, resizeFromCorner, squareCorners, squarePolygon, type SquareState } from "@/lib/square";
 import { blueprintColour, lumaOf } from "@/lib/blueprint";
-import { looksLikeMouseWheel, TRACKPAD_MEMORY_MS, wheelAction } from "@/lib/gestures";
+import { WheelGestures } from "@/lib/gestures";
 import { prefersDark, useDark } from "@/lib/theme";
 
 // Served from public/ by scripts/copy-maplibre-worker.mjs; the bundler breaks the default URL.
@@ -82,6 +82,9 @@ function addHatch(map: MapLibreMap, key: string, color: string) {
   ctx.stroke();
   map.addImage(hatchId(key), ctx.getImageData(0, 0, n, n));
 }
+
+/** Steepest 3D tilt: low enough to look along a street, short of the horizon where tiles thin out. */
+const MAX_PITCH_3D = 80;
 
 /** CAD grip: a filled red square with a thin sheet-coloured keyline so it reads on ink and on the dark sheet. */
 function addGrip(map: MapLibreMap, keyline: string) {
@@ -156,6 +159,9 @@ export default function MapView(props: Props) {
       zoom: initial.zoom,
       // Flat until 3D is on; then low enough to look along the street and up at the sun dome.
       maxPitch: 0,
+      // Right-drag (or Ctrl-drag) turns by horizontal movement the same way anywhere on the map;
+      // MapLibre's default "circular" mode turns one way above the centre and the other below.
+      dragRotate: { movement: "linear" },
       attributionControl: { compact: true, customAttribution: "Photon" },
     });
     mapRef.current = map;
@@ -329,20 +335,35 @@ export default function MapView(props: Props) {
     // still zooms (lib/gestures.ts). Safari reports pinch as gesture events, handled below.
     map.scrollZoom.disable();
     const box = map.getCanvasContainer();
-    let trackpadAt = 0;
+    // Wheel deltas are batched per animation frame: trackpads fire unevenly (and faster than the
+    // display), and applying each event straight away is what made orbiting stutter.
+    const gestures = new WheelGestures();
+    const pending = { dx: 0, dy: 0, dBearing: 0, dPitch: 0 };
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      if (pending.dx || pending.dy) map.panBy([pending.dx, pending.dy], { animate: false });
+      if (pending.dBearing || pending.dPitch)
+        map.jumpTo({ bearing: map.getBearing() + pending.dBearing, pitch: map.getPitch() + pending.dPitch });
+      pending.dx = pending.dy = pending.dBearing = pending.dPitch = 0;
+    };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const ev = e as WheelEvent & { wheelDeltaY?: number };
-      const recent = performance.now() - trackpadAt < TRACKPAD_MEMORY_MS;
-      if (!e.ctrlKey && !looksLikeMouseWheel(ev)) trackpadAt = performance.now();
       const rect = box.getBoundingClientRect();
-      const act = wheelAction(ev, recent, rect.height);
-      if (act.kind === "pan") map.panBy([act.dx, act.dy], { animate: false });
-      else if (act.kind === "orbit") map.jumpTo({ bearing: map.getBearing() + act.dBearing, pitch: map.getPitch() + act.dPitch });
-      else {
+      const act = gestures.next(e as WheelEvent & { wheelDeltaY?: number }, performance.now(), rect.height);
+      if (act.kind === "zoom") {
         const around = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
         map.zoomTo(map.getZoom() + act.dz, { around, animate: false });
+        return;
       }
+      if (act.kind === "pan") {
+        pending.dx += act.dx;
+        pending.dy += act.dy;
+      } else {
+        pending.dBearing += act.dBearing;
+        pending.dPitch += act.dPitch;
+      }
+      if (!frame) frame = requestAnimationFrame(flush);
     };
     let gestureZoom = 0;
     let gestureBearing = 0;
@@ -367,6 +388,7 @@ export default function MapView(props: Props) {
 
     return () => {
       box.removeEventListener("wheel", onWheel);
+      cancelAnimationFrame(frame);
       box.removeEventListener("gesturestart", onGestureStart);
       box.removeEventListener("gesturechange", onGestureChange);
       readyRef.current = false;
@@ -434,8 +456,10 @@ export default function MapView(props: Props) {
     const map = mapRef.current;
     if (!map) return;
     if (props.threeD) {
-      map.setMaxPitch(85);
-      map.easeTo({ pitch: 55, duration: 600 });
+      map.setMaxPitch(MAX_PITCH_3D);
+      // Orbit pivots on the screen centre, so put the site there: turning then spins the site in place.
+      const sq = latest.current.square;
+      map.easeTo({ pitch: 55, duration: 600, ...(sq ? { center: [sq.lon, sq.lat] as [number, number] } : {}) });
     } else {
       // Ease down first, then lock the map flat so no gesture can tilt the 2D plan.
       map.easeTo({ pitch: 0, duration: 600 });
