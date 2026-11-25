@@ -12,6 +12,9 @@ from dataclasses import dataclass
 
 import matplotlib as mpl
 
+from ..vocab import LANDUSE as _LANDUSE
+from ..vocab import colours as _vocab_colours
+
 # A3 landscape in inches. Vector PDF, so this is the real printed size.
 A3_LANDSCAPE = (16.54, 11.69)
 
@@ -26,18 +29,8 @@ ROAD = "#5a5a5a"
 ACCENT = "#a4462d"
 MUTED = "#8a8478"
 
-LANDUSE_COLOURS = {
-    "residential": "#d8cfc0",
-    "commercial": "#c9b8b0",
-    "retail": "#d3b7a8",
-    "industrial": "#bdbdb4",
-    "green": GREEN,
-    "water": WATER,
-    "institutional": "#cfc6d3",
-    "transport": "#c4c4c4",
-    "other": "#dedad2",
-    "unmapped": "#f2efe9",
-}
+# From sce/vocab.py so the sheet, SVG, QML and web agree on class names.
+LANDUSE_COLOURS = {**_vocab_colours(_LANDUSE, sheet=True), "unmapped": "#f2efe9"}
 
 # The ESA WorldCover palette deliberately lives with its provider
 # (sce.providers.landcover_worldcover.CLASS_COLOURS) and not here, so the raster

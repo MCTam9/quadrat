@@ -7,6 +7,8 @@ over with a plausible-looking default.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import osmnx as ox
 import pandas as pd
 from shapely import make_valid
@@ -14,6 +16,8 @@ from shapely.ops import unary_union
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ..vocab import landuse_class
+from ._overpass import configure_osmnx, with_overpass_fallback
 
 TAGS: dict[str, object] = {
     "landuse": True,
@@ -21,51 +25,9 @@ TAGS: dict[str, object] = {
     "natural": ["water", "wood", "scrub"],
 }
 
-_CLASS_MAP: dict[str, dict[str, str]] = {
-    "landuse": {
-        "residential": "residential",
-        "commercial": "commercial",
-        "retail": "retail",
-        "industrial": "industrial",
-        "railway": "transport",
-        "cemetery": "other",
-        "farmland": "green",
-        "farmyard": "green",
-        "forest": "green",
-        "grass": "green",
-        "meadow": "green",
-        "orchard": "green",
-        "vineyard": "green",
-        "recreation_ground": "green",
-        "allotments": "green",
-        "religious": "institutional",
-        "education": "institutional",
-        "institutional": "institutional",
-        "military": "other",
-        "quarry": "other",
-        "brownfield": "other",
-        "construction": "other",
-        "garages": "other",
-    },
-    "leisure": {
-        "park": "green",
-        "garden": "green",
-        "pitch": "green",
-    },
-    "natural": {
-        "water": "water",
-        "wood": "green",
-        "scrub": "green",
-    },
-}
-
 
 def _classify(row: pd.Series) -> str:
-    for key, mapping in _CLASS_MAP.items():
-        value = row.get(key)
-        if isinstance(value, str) and value in mapping:
-            return mapping[value]
-    return "other"
+    return landuse_class(row)
 
 
 class OsmLanduseProvider(Provider):
@@ -79,12 +41,10 @@ class OsmLanduseProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
-        ox.settings.cache_folder = str(cache.root / "osmnx")
-        ox.settings.use_cache = True
-        (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
+        configure_osmnx(cache)
 
         try:
-            gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags=TAGS)
+            gdf = with_overpass_fallback(ox.features.features_from_polygon, aoi.geometry_wgs84, tags=TAGS)
         except Exception as exc:
             raise RuntimeError(f"osm_landuse: Overpass query failed: {exc}") from exc
 
@@ -103,10 +63,6 @@ class OsmLanduseProvider(Provider):
         gdf_clipped = aoi.clip(gdf_proj)
         gdf_clipped = gdf_clipped[~gdf_clipped.geometry.is_empty]
 
-        union = unary_union([make_valid(g) for g in gdf_clipped.geometry])
-        coverage = float(union.area) / float(aoi.area_m2) if aoi.area_m2 else 0.0
-        coverage = min(coverage, 1.0)
-
         source = Source(
             name="OpenStreetMap contributors (via Overpass API)",
             url="https://www.openstreetmap.org/copyright",
@@ -118,25 +74,26 @@ class OsmLanduseProvider(Provider):
             commercial_ok=True,
         )
 
-        degraded = coverage < 0.5
-        notes = (
-            []
-            if not degraded
-            else [
+        return self.summarise(
+            LayerResult(layer=self.layer, provider=self.name, gdf=gdf_clipped, sources=[source]), aoi
+        )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Coverage = union area of the polygons over the square's area."""
+        geoms = [] if result.gdf is None else [make_valid(g) for g in result.gdf.geometry if g is not None]
+        union = unary_union(geoms) if geoms else None
+        area = float(union.area) if union is not None else 0.0
+        coverage = min(area / float(aoi.area_m2), 1.0) if aoi.area_m2 else 0.0
+        low = coverage < 0.5
+        findings = (
+            [
                 f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
                 "the remainder is genuinely unmapped, not implied to be any particular class"
             ]
+            if low
+            else []
         )
-
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            gdf=gdf_clipped,
-            sources=[source],
-            coverage=coverage,
-            degraded=degraded,
-            notes=notes,
-        )
+        return replace(result, coverage=coverage, degraded=low, findings=findings)
 
 
 REGISTRY.register(OsmLanduseProvider())

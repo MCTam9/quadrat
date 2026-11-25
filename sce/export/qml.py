@@ -12,19 +12,16 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from ..types import LayerResult
+from ..vocab import LANDUSE, colours
 
-_LANDUSE_COLOURS: dict[str, str] = {
-    "residential": "230,230,180,255",
-    "commercial": "230,140,140,255",
-    "industrial": "180,150,200,255",
-    "retail": "230,180,120,255",
-    "park": "160,220,160,255",
-    "green": "160,220,160,255",
-    "forest": "80,160,80,255",
-    "farmland": "220,220,140,255",
-    "water": "140,190,230,255",
-    "other": "200,200,200,255",
-}
+
+def _rgba(hex_colour: str) -> str:
+    h = hex_colour.lstrip("#")
+    return ",".join(str(int(h[i : i + 2], 16)) for i in (0, 2, 4)) + ",255"
+
+
+# From sce/vocab.py: the same classes the provider emits.
+_LANDUSE_COLOURS: dict[str, str] = {k: _rgba(v) for k, v in colours(LANDUSE, sheet=True).items()}
 
 _SINGLE_SYMBOL_STYLE = {
     "buildings": {"type": "fill", "color": "60,60,60,255", "outline": "0,0,0,0", "width": "0"},

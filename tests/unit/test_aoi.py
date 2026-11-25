@@ -289,3 +289,23 @@ def test_epsg_property_falls_back_to_crs_string_for_laea():
     # LAEA CRSes built from a custom proj4 string have no EPSG code.
     assert aoi.crs.to_epsg() is None
     assert aoi.epsg == aoi.crs.to_string()
+
+
+@pytest.mark.parametrize("lon,lat", [(-0.1276, 51.5072), (-1.5491, 53.8008), (46.6753, 24.7136)])
+def test_point_square_is_upright_to_true_north_with_exact_grid_dimensions(lon, lat):
+    """The site must match the north-up square drawn on a web map, while staying in
+    the standard UTM grid where it sits rotated by the grid convergence (2.25 deg
+    in London). Its edges still measure exactly 2r in CRS metres, so CAD users
+    measure the site they asked for.
+    """
+    import math
+
+    aoi = AOI.from_point(lon, lat, 300.0)
+    sw, se, ne, nw = list(aoi.geometry_wgs84.exterior.coords)[:4]
+    # Upright to within a few centimetres (2e-6 deg); a 2 deg rotation would be ~10 m.
+    assert sw[1] == pytest.approx(se[1], abs=2e-6)  # south edge runs due east
+    assert sw[0] == pytest.approx(nw[0], abs=2e-6)  # west edge runs due north
+    corners = list(aoi.geometry.exterior.coords)[:4]
+    for a, b in zip(corners, corners[1:] + corners[:1], strict=True):
+        assert math.dist(a, b) == pytest.approx(600.0, abs=1e-3)
+    assert aoi.area_m2 == pytest.approx(360_000.0, rel=1e-6)

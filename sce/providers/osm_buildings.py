@@ -7,7 +7,9 @@ import pandas as pd
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._buildings import summarise_building_heights
 from ._height import height_and_source
+from ._overpass import configure_osmnx, with_overpass_fallback
 
 
 class OsmBuildingsProvider(Provider):
@@ -28,12 +30,12 @@ class OsmBuildingsProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
-        ox.settings.cache_folder = str(cache.root / "osmnx")
-        ox.settings.use_cache = True
-        (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
+        configure_osmnx(cache)
 
         try:
-            gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags={"building": True})
+            gdf = with_overpass_fallback(
+                ox.features.features_from_polygon, aoi.geometry_wgs84, tags={"building": True}
+            )
         except Exception as exc:
             raise RuntimeError(f"osm_buildings: Overpass query failed: {exc}") from exc
 
@@ -56,9 +58,6 @@ class OsmBuildingsProvider(Provider):
         gdf_proj = aoi.to_metric(gdf)
         gdf_clipped = aoi.clip(gdf_proj)
 
-        known = gdf_clipped["height_source"].astype(bool).sum()
-        coverage = float(known) / float(len(gdf_clipped)) if len(gdf_clipped) else 0.0
-
         source = Source(
             name="OpenStreetMap contributors (via Overpass API)",
             url="https://www.openstreetmap.org/copyright",
@@ -68,15 +67,12 @@ class OsmBuildingsProvider(Provider):
             commercial_ok=True,
         )
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            gdf=gdf_clipped,
-            sources=[source],
-            coverage=coverage,
-            degraded=coverage < 0.5,
-            notes=[] if coverage >= 0.5 else ["fewer than half of buildings have a known height"],
+        return self.summarise(
+            LayerResult(layer=self.layer, provider=self.name, gdf=gdf_clipped, sources=[source]), aoi
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        return summarise_building_heights(result)
 
 
 REGISTRY.register(OsmBuildingsProvider())

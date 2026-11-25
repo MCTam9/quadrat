@@ -42,6 +42,7 @@ from __future__ import annotations
 import io
 import math
 import zipfile
+from dataclasses import replace
 
 import numpy as np
 from affine import Affine
@@ -52,6 +53,7 @@ from rasterio.warp import Resampling, reproject
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._terrain_grid import inside_aoi
 
 MOLLWEIDE = CRS.from_user_input("ESRI:54009")
 BASE_URL = (
@@ -146,11 +148,8 @@ class GhslBuildingHeightProvider(Provider):
             dst_nodata=np.nan,
         )
 
-        total_cells = dst_arr.size
-        valid_mask = np.isfinite(dst_arr) & (dst_arr > 0.0)
-        valid = dst_arr[valid_mask]
-        coverage = float(np.isfinite(dst_arr).sum()) / float(total_cells) if total_cells else 0.0
-        mean_height = float(valid.mean()) if valid.size else None
+        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
+        dst_arr[~inside] = np.nan
 
         source = Source(
             name="GHS-BUILT-H R2023A (ANBH), European Commission JRC",
@@ -165,28 +164,39 @@ class GhslBuildingHeightProvider(Provider):
             commercial_ok=True,
         )
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            raster={
-                "array": dst_arr,
-                "transform": dst_transform,
-                "crs": aoi.crs,
-                "nodata": float("nan"),
-                "res": (RESOLUTION_M, RESOLUTION_M),
-            },
-            data={"mean_height_m": mean_height},
-            sources=[source],
-            coverage=coverage,
-            degraded=coverage < 0.5,
-            notes=[
-                "GHS-BUILT-H ANBH is a 2018-epoch 100 m average net building height raster, a "
-                "fallback for FSI where OSM height tagging is too sparse to trust, not a "
-                "footprint source: it carries no per-building geometry.",
-                f"Reprojected to {aoi.epsg} on a square {RESOLUTION_M:.0f} m grid "
-                "(rasterio.warp.reproject, Resampling.bilinear).",
-            ],
+        return self.summarise(
+            LayerResult(
+                layer=self.layer,
+                provider=self.name,
+                raster={
+                    "array": dst_arr,
+                    "transform": dst_transform,
+                    "crs": aoi.crs,
+                    "nodata": float("nan"),
+                    "res": (RESOLUTION_M, RESOLUTION_M),
+                },
+                sources=[source],
+                notes=[
+                    "GHS-BUILT-H ANBH is a 2018-epoch 100 m average net building height raster, a "
+                    "fallback for FSI where OSM height tagging is too sparse to trust, not a "
+                    "footprint source: it carries no per-building geometry.",
+                    f"Reprojected to {aoi.epsg} on a square {RESOLUTION_M:.0f} m grid "
+                    "(rasterio.warp.reproject, Resampling.bilinear).",
+                ],
+            ),
+            aoi,
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Coverage and mean (cells > 0) over the cells inside the square."""
+        arr = np.asarray(result.raster["array"], dtype=float)
+        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
+        finite = np.isfinite(arr) & inside
+        n_inside = int(inside.sum())
+        coverage = float(finite.sum()) / n_inside if n_inside else 0.0
+        valid = arr[finite & (arr > 0.0)]
+        data = {**(result.data or {}), "mean_height_m": float(valid.mean()) if valid.size else None}
+        return replace(result, data=data, coverage=coverage, degraded=coverage < 0.5, findings=[])
 
     @staticmethod
     def _make_producer(url: str):

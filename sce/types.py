@@ -51,6 +51,10 @@ class LayerResult:
     coverage: float | None = None
     degraded: bool = False
     notes: list[str] = field(default_factory=list)
+    # Notes that depend on the square the result covers (e.g. low-coverage
+    # statements). Always recomputed by `Provider.summarise`; `notes` holds the
+    # square-independent facts (licence caveats, fallbacks, DSM-not-DTM).
+    findings: list[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -66,7 +70,7 @@ class LayerResult:
             "coverage": self.coverage,
             "degraded": self.degraded,
             "sources": [s.to_dict() for s in self.sources],
-            "notes": self.notes,
+            "notes": [*self.notes, *self.findings],
         }
 
 
@@ -89,6 +93,18 @@ class Provider:
 
     def fetch(self, aoi, cache) -> LayerResult:
         raise NotImplementedError
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Recompute the square-dependent summary of `result` for `aoi`.
+
+        `result`'s geometry or raster must already be confined to `aoi`. Returns
+        a copy with `coverage`, `degraded`, `findings` and any square-dependent
+        `data` (means, fractions, summaries) recomputed for that square. Pure:
+        no I/O, and `result` is not mutated. `fetch` ends by calling this, and
+        `sce.clip` calls it after cutting geometry, so one rule serves both.
+        The default returns `result` unchanged.
+        """
+        return result
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} name={self.name!r} layer={self.layer!r} rank={self.rank}>"

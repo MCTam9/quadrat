@@ -12,6 +12,7 @@ numbers.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import rasterio
@@ -23,6 +24,7 @@ from rasterio.windows import from_bounds
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._terrain_grid import inside_aoi
 
 BUCKET_HTTPS = "https://esa-worldcover.s3.eu-central-1.amazonaws.com"
 TILE_SIZE_DEG = 3
@@ -135,15 +137,8 @@ class WorldCoverProvider(Provider):
             dst_nodata=0,
         )
 
-        total = dst_arr.size
-        fractions: dict[str, float] = {}
-        for code, cls_name in CLASSES.items():
-            count = int(np.count_nonzero(dst_arr == code))
-            if count:
-                fractions[cls_name] = count / total
-        unclassified = int(np.count_nonzero(dst_arr == 0))
-        if unclassified:
-            fractions["Unclassified/no data"] = unclassified / total
+        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
+        dst_arr[~inside] = 0
 
         source = Source(
             name="ESA WorldCover 10m v200 (2021)",
@@ -157,28 +152,44 @@ class WorldCoverProvider(Provider):
             commercial_ok=True,
         )
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            raster={
-                "array": dst_arr,
-                "transform": dst_transform,
-                "crs": aoi.crs,
-                "nodata": 0,
-                "res": (RESOLUTION_M, RESOLUTION_M),
-            },
-            data={
-                "class_fractions": fractions,
-                "class_colours": {CLASSES[k]: v for k, v in CLASS_COLOURS.items()},
-            },
-            sources=[source],
-            coverage=1.0 - fractions.get("Unclassified/no data", 0.0),
-            degraded=False,
-            notes=[
-                "Fills the gap in OSM landuse coverage across regions (Central Asia, the Gulf, "
-                "much of the Global South) where OSM landuse tagging is sparse or absent.",
-            ],
+        return self.summarise(
+            LayerResult(
+                layer=self.layer,
+                provider=self.name,
+                raster={
+                    "array": dst_arr,
+                    "transform": dst_transform,
+                    "crs": aoi.crs,
+                    "nodata": 0,
+                    "res": (RESOLUTION_M, RESOLUTION_M),
+                },
+                data={
+                    "class_colours": {CLASSES[k]: v for k, v in CLASS_COLOURS.items()},
+                },
+                sources=[source],
+                notes=[
+                    "Fills the gap in OSM landuse coverage across regions (Central Asia, the Gulf, "
+                    "much of the Global South) where OSM landuse tagging is sparse or absent.",
+                ],
+            ),
+            aoi,
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Class fractions over the cells inside the square; coverage = 1 - unclassified."""
+        arr = np.asarray(result.raster["array"])
+        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
+        total = max(int(inside.sum()), 1)
+        fractions: dict[str, float] = {}
+        for code, cls_name in CLASSES.items():
+            count = int(np.count_nonzero((arr == code) & inside))
+            if count:
+                fractions[cls_name] = count / total
+        unclassified = int(np.count_nonzero((arr == 0) & inside)) / total
+        if unclassified:
+            fractions["Unclassified/no data"] = unclassified
+        data = {**(result.data or {}), "class_fractions": fractions}
+        return replace(result, data=data, coverage=1.0 - unclassified, degraded=False, findings=[])
 
     @staticmethod
     def _make_producer(url: str, w: float, s: float, e: float, n: float, lat: int, lon: int):

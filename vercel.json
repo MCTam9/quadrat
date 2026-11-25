@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "web": {
+      "root": "web"
+    },
+    "api": {
+      "root": ".",
+      "entrypoint": "api/main.py",
+      "installCommand": "pip install '.[rhino,mesh,web]'",
+      "functions": {
+        "api/main.py": {
+          "maxDuration": 300,
+          "excludeFiles": "{tests/**,out/**,web/**,docs/**,**/__pycache__/**}"
+        }
+      }
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ]
+}

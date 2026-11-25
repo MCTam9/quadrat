@@ -10,6 +10,7 @@ are baked into the elevation, so it is not a substitute for a bare-earth DTM.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import rasterio
@@ -19,7 +20,7 @@ from rasterio.windows import from_bounds
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import elevation_summary, reproject_merged_to_square_grid
+from ._terrain_grid import elevation_summary, inside_aoi, reproject_merged_to_square_grid
 
 BUCKET_HTTPS = "https://copernicus-dem-30m.s3.amazonaws.com"
 RESOLUTION_M = 30.0
@@ -97,30 +98,39 @@ class CopernicusTerrainProvider(Provider):
             commercial_ok=True,
         )
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            raster={
-                "array": dst_arr,
-                "transform": dst_transform,
-                "crs": aoi.crs,
-                "nodata": float("nan"),
-                "res": (RESOLUTION_M, RESOLUTION_M),
-            },
-            data={
-                "terrain_model": "DSM",
-                **elevation_summary(dst_arr),
-            },
-            sources=[source],
-            coverage=1.0,
-            degraded=False,
-            notes=[
-                "Copernicus GLO-30 is a DSM (surface model), not a bare-earth DTM: rooftops "
-                "and canopy inflate elevation and any slope derived from it.",
-                f"Reprojected to {aoi.epsg} on a square {RESOLUTION_M:.0f} m grid "
-                "(rasterio.warp.reproject, Resampling.bilinear) before any slope computation.",
-            ],
+        return self.summarise(
+            LayerResult(
+                layer=self.layer,
+                provider=self.name,
+                raster={
+                    "array": dst_arr,
+                    "transform": dst_transform,
+                    "crs": aoi.crs,
+                    "nodata": float("nan"),
+                    "res": (RESOLUTION_M, RESOLUTION_M),
+                },
+                data={
+                    "terrain_model": "DSM",
+                },
+                sources=[source],
+                coverage=1.0,
+                degraded=False,
+                notes=[
+                    "Copernicus GLO-30 is a DSM (surface model), not a bare-earth DTM: rooftops "
+                    "and canopy inflate elevation and any slope derived from it.",
+                    f"Reprojected to {aoi.epsg} on a square {RESOLUTION_M:.0f} m grid "
+                    "(rasterio.warp.reproject, Resampling.bilinear) before any slope computation.",
+                ],
+            ),
+            aoi,
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Elevation min/max/mean over the finite cells inside the square."""
+        arr = np.asarray(result.raster["array"], dtype=float)
+        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
+        data = {**(result.data or {}), **elevation_summary(np.where(inside, arr, np.nan))}
+        return replace(result, data=data)
 
     @staticmethod
     def _make_producer(url: str, w: float, s: float, e: float, n: float, lat: int, lon: int):

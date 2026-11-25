@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* The drawing sheet. White sheet, black ink, one red line that only ever marks the site.
+   Dark mode is the same drawing in white on charcoal, monochrome so data colours carry. */
+:root {
+  --sheet: #ffffff;
+  --ink: #000000;
+  --red-line: #e0261b;
+  --graphite: #6b7069;
+  --rule: #dadcd7;
+  --hover: rgba(0, 0, 0, 0.055);
+  --edge: #000000;
+  --peek: 4.5rem;
+  --panel-w: 25rem;
+
+  /* chart colours */
+  --ch-warm: #b4531c;
+  --ch-cool: #1f5a99;
+  --ch-rain: #2f6fae;
+  --ch-solar: #b7791f;
+  --ch-ok: #3d8a66;
+  --sun-jun: #b45309;
+  --sun-equ: #6d5fa6;
+  --sun-dec: #1d4ed8;
+  --wind-0: #d5d7d2;
+  --wind-1: #b0b3ad;
+  --wind-2: #8a8e87;
+  --wind-3: #5f635d;
+  --wind-4: #34372f;
+  --wind-5: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sheet: #161616;
+    --ink: #ffffff;
+    --graphite: #a3a3a3;
+    --rule: #3a3a3a;
+    --hover: rgba(255, 255, 255, 0.09);
+    --edge: #8f8f8f;
+
+    --ch-warm: #f2a367;
+    --ch-cool: #8fc1ee;
+    --ch-rain: #8fc1ee;
+    --ch-solar: #f2c14e;
+    --ch-ok: #7fcfa7;
+    --sun-jun: #fbbf24;
+    --sun-equ: #c4b5fd;
+    --sun-dec: #7dd3fc;
+    --wind-0: #4a4a4a;
+    --wind-1: #6e6e6e;
+    --wind-2: #959595;
+    --wind-3: #bdbdbd;
+    --wind-4: #e3e3e3;
+    --wind-5: #ffffff;
+  }
+}
+
+@theme inline {
+  --color-sheet: var(--sheet);
+  --color-ink: var(--ink);
+  --color-red-line: var(--red-line);
+  --color-graphite: var(--graphite);
+  --color-rule: var(--rule);
+  --color-hover: var(--hover);
+  --color-edge: var(--edge);
+  --font-sans: var(--font-archivo), system-ui, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Expanded cut of Archivo for the site name and the key figures. */
+.wide {
+  font-stretch: 118%;
+  font-variation-settings: "wdth" 118;
+  font-variant-numeric: tabular-nums;
+}
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A solid sheet: no glass, no blur. */
+.sheet {
+  background: var(--sheet);
+  border: 1px solid var(--edge);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--rule), transparent, var(--rule));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 2px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* MapLibre's CSS is unlayered and wins over Tailwind utilities, so its control
+   containers are positioned here, with selectors scoped under .maplibregl-map. */
+.maplibregl-map .maplibregl-ctrl-attrib {
+  font-size: 11px;
+  font-family: inherit;
+}
+.maplibregl-map .maplibregl-ctrl-group button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+.maplibregl-map .maplibregl-ctrl-top-right {
+  /* Below the search box and the 2D/3D + Layers row on a phone. */
+  top: 6.5rem;
+}
+.maplibregl-map .maplibregl-ctrl-bottom-right,
+.maplibregl-map .maplibregl-ctrl-bottom-left {
+  bottom: calc(var(--peek) + env(safe-area-inset-bottom));
+}
+@media (min-width: 640px) {
+  .maplibregl-map .maplibregl-ctrl-top-right {
+    top: 0;
+  }
+  .maplibregl-map .maplibregl-ctrl-top-right,
+  .maplibregl-map .maplibregl-ctrl-bottom-right {
+    right: calc(var(--panel-w) + 1.25rem);
+  }
+  .maplibregl-map .maplibregl-ctrl-bottom-right,
+  .maplibregl-map .maplibregl-ctrl-bottom-left {
+    bottom: 0;
+  }
+}
+/* Map controls drawn as sheets, not rounded white pills. */
+.maplibregl-map .maplibregl-ctrl-group,
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact,
+.maplibregl-map .maplibregl-ctrl-attrib {
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: 0;
+  box-shadow: none;
+}
+.maplibregl-map .maplibregl-ctrl-group {
+  border: 1px solid var(--edge);
+}
+.maplibregl-map .maplibregl-ctrl-attrib a,
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact a {
+  color: var(--ink);
+}
+.maplibregl-map .maplibregl-ctrl-scale {
+  background: var(--sheet);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .maplibregl-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
+  .maplibregl-map .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+}
+
+/* Missing data, one visual language everywhere: crimson hatch on rose,
+   the same as the hatched buildings on the map. */
+.missing-hatch {
+  background:
+    repeating-linear-gradient(135deg, rgba(225, 29, 72, 0.7) 0 1.5px, transparent 1.5px 5px),
+    rgba(254, 205, 211, 0.75);
+}

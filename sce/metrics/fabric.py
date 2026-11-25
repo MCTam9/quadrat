@@ -84,6 +84,32 @@ def _block_segments(streets_layer, graph):
     return [LineString(pts) for pts in pairs if pts[0] != pts[1]]
 
 
+def _height_source_shares(gdf) -> dict[str, float]:
+    """Share of buildings per height source (sce.vocab.HEIGHT_SOURCE ids), summing to 1.
+
+    A building without a finite height counts as "unknown" whatever its tag
+    says, so the shares describe what FSI actually used.
+    """
+    from ..vocab import HEIGHT_SOURCE_IDS
+
+    n = len(gdf)
+    counts = dict.fromkeys(HEIGHT_SOURCE_IDS, 0)
+    heights = gdf["height_m"] if "height_m" in gdf.columns else None
+    sources = gdf["height_source"] if "height_source" in gdf.columns else None
+    for i in range(n):
+        h = heights.iloc[i] if heights is not None else None
+        src = sources.iloc[i] if sources is not None else None
+        try:
+            known = h is not None and np.isfinite(float(h)) and float(h) > 0
+        except (TypeError, ValueError):
+            known = False
+        key = src if known and isinstance(src, str) and src in counts and src != "unknown" else "unknown"
+        if known and key == "unknown":
+            key = "height"
+        counts[key] += 1
+    return {k: (v / n if n else 0.0) for k, v in counts.items()}
+
+
 def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     buildings = layers["buildings"]
     assert_metric_crs(buildings.gdf.crs if buildings.gdf is not None else None, where="fabric_metrics")
@@ -95,6 +121,8 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
         result.update(
             {
                 "gsi": 0.0,
+                "building_count": 0,
+                "height_source_shares": {},
                 "footprint_area_median_m2": None,
                 "footprint_area_iqr_m2": None,
                 "fsi": None,
@@ -105,6 +133,8 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     else:
         footprint_union_area, _ = _valid_union_area(gdf.geometry.values)
         result["gsi"] = footprint_union_area / aoi.area_m2 if aoi.area_m2 else None
+        result["building_count"] = len(gdf)
+        result["height_source_shares"] = _height_source_shares(gdf)
 
         areas = gdf.geometry.apply(lambda g: make_valid(g).area if g is not None else np.nan).dropna()
         if len(areas):
@@ -123,7 +153,12 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             per_building_area = gdf.geometry.apply(lambda g: make_valid(g).area if g is not None else 0.0)
             floor_area = float((per_building_area * storeys.fillna(0.0)).sum())
             result["fsi"] = floor_area / aoi.area_m2 if aoi.area_m2 else None
-            result["fsi_source"] = "building heights (OSM height/levels tags)"
+            lidar = "height_source" in gdf.columns and (gdf["height_source"] == "lidar").any()
+            result["fsi_source"] = (
+                "building heights (OSM height/levels tags, gaps measured from EA LiDAR)"
+                if lidar
+                else "building heights (OSM height/levels tags)"
+            )
         else:
             ghsl = layers.get("building_height")
             ghsl_mean_height = (ghsl.data or {}).get("mean_height_m") if ghsl is not None else None

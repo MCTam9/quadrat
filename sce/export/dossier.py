@@ -33,7 +33,8 @@ def _git_sha() -> str | None:
         return None
 
 
-def _dedup_sources(layers: dict[str, LayerResult]) -> list[dict[str, Any]]:
+def sources_of(layers: dict[str, LayerResult]) -> list[dict[str, Any]]:
+    """Every distinct data source behind these layers, sorted, as dicts."""
     seen: dict[tuple[str, str, str], dict[str, Any]] = {}
     for result in layers.values():
         if result is None:
@@ -75,7 +76,7 @@ def write_dossier(
         "aoi": aoi.provenance(),
         "metrics": {k: metrics[k] for k in sorted(metrics)},
         "layers": {k: layers[k].provenance() for k in sorted(layers) if layers[k] is not None},
-        "sources": _dedup_sources(layers),
+        "sources": sources_of(layers),
         "coverage": _coverage_of(assessment),
         "degraded": bool(assessment.get("degraded")) if isinstance(assessment, dict) else False,
         "warnings": sorted(_warnings_of(assessment)),

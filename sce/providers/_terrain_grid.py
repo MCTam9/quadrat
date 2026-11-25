@@ -49,7 +49,21 @@ def reproject_merged_to_square_grid(
         src_nodata=None,
         dst_nodata=np.nan,
     )
+    dst_arr[~inside_aoi(dst_arr.shape, dst_transform, aoi)] = np.nan
     return dst_arr, dst_transform
+
+
+def inside_aoi(shape: tuple[int, int], transform: Affine, aoi: Any) -> np.ndarray:
+    """Boolean grid, True for cells whose centre lies inside `aoi.geometry`.
+
+    Raster grids cover the AOI's bounding box, but the AOI is a true-north
+    square that sits rotated by the grid convergence inside that box. Cells in
+    the corners belong to the neighbours, not the site, and must not enter an
+    area-based figure.
+    """
+    from rasterio.features import geometry_mask
+
+    return geometry_mask([aoi.geometry], out_shape=shape, transform=transform, invert=True)
 
 
 def elevation_summary(array: np.ndarray) -> dict[str, float | None]:

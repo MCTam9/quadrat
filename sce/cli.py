@@ -6,7 +6,6 @@ richer data exists the sheet gets richer; nothing about the invocation changes.
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 from pathlib import Path
@@ -15,18 +14,11 @@ import click
 
 from . import __version__
 from .aoi import AOI
+from .pipeline import EXPORTERS, build_aoi, fetch_layers, run_exports
+from .pipeline import LAYERS as PIPELINE_LAYERS
 
-LAYERS = (
-    "streets",
-    "buildings",
-    "landuse",
-    "landcover",
-    "amenities",
-    "terrain",
-    "climate",
-    "constraints",
-    "building_height",
-)
+# Re-exported: the layer vocabulary lives in sce.pipeline, shared with the web API.
+LAYERS = PIPELINE_LAYERS
 
 # Above this the Overpass download is huge and the figure-ground degrades into a
 # grey smudge, so it is deliberately behind a flag.
@@ -42,39 +34,23 @@ def _setup_logging(verbose: bool) -> None:
 
 
 def _build_aoi(coords: str | None, geojson: str | None, radius: float, name: str) -> AOI:
-    if geojson:
-        obj = json.loads(Path(geojson).read_text())
-        return AOI.from_geojson(obj, name=name)
-    if not coords:
-        raise click.UsageError("give --coords 'lon,lat' or --geojson path")
     try:
-        lon_s, lat_s = coords.split(",")
-        lon, lat = float(lon_s), float(lat_s)
+        return build_aoi(coords, geojson, radius, name)
     except ValueError as exc:
-        raise click.UsageError("--coords must be 'lon,lat' in decimal degrees") from exc
-    return AOI.from_point(lon, lat, radius, name=name)
+        raise click.UsageError(str(exc)) from exc
+
+
+def _echo_layer(layer: str, result) -> None:
+    if result is None:
+        click.echo(f"  {layer:<12} none", err=True)
+        return
+    n = len(result.gdf) if result.gdf is not None else ("raster" if result.raster is not None else "data")
+    cov = "" if result.coverage is None else f", coverage {result.coverage:.0%}"
+    click.echo(f"  {layer:<12} {result.provider} ({n}{cov})", err=True)
 
 
 def _fetch_layers(aoi: AOI, cache, only, override, allow_nc: bool) -> dict:
-    from .registry import REGISTRY
-
-    wanted = only or LAYERS
-    layers: dict = {}
-    for layer in wanted:
-        if not REGISTRY.chain(layer, aoi):
-            continue
-        click.echo(f"  {layer:<12} ", nl=False, err=True)
-        result = REGISTRY.fetch(
-            layer, aoi, cache, override=override.get(layer), allow_non_commercial=allow_nc
-        )
-        if result is None:
-            click.echo("none", err=True)
-            continue
-        layers[layer] = result
-        n = len(result.gdf) if result.gdf is not None else ("raster" if result.raster is not None else "data")
-        cov = "" if result.coverage is None else f", coverage {result.coverage:.0%}"
-        click.echo(f"{result.provider} ({n}{cov})", err=True)
-    return layers
+    return fetch_layers(aoi, cache, only, override, allow_nc, on_layer=_echo_layer)
 
 
 @click.group()
@@ -104,7 +80,7 @@ def main() -> None:
     "--export",
     "exports",
     multiple=True,
-    type=click.Choice(["gpkg", "dxf", "json", "png", "3dm"]),
+    type=click.Choice(["json", *EXPORTERS]),
     help="repeatable; the PDF sheet is always written",
 )
 @click.option("--force", is_flag=True, help="permit a radius above 5 km")
@@ -169,26 +145,12 @@ def report(
 
 
 def _run_exports(exports, out: Path, name: str, aoi, layers, metrics) -> None:
-    for fmt in exports:
-        if fmt == "gpkg":
-            from .export.gpkg import write_gpkg
-            from .export.qml import write_qml_styles
+    for p in run_exports(exports, out, name, aoi, layers, metrics):
+        click.echo(f"  wrote {p}", err=True)
+    if any(fmt in ("glb", "obj") for fmt in exports):
+        from .export._georef import write_georef
 
-            p = write_gpkg(out / f"{name}.gpkg", layers, aoi, metrics)
-            write_qml_styles(p, layers)
-            click.echo(f"  wrote {p} (+ QGIS styles)", err=True)
-        elif fmt == "dxf":
-            from .export.dxf import write_dxf
-
-            click.echo(f"  wrote {write_dxf(out / f'{name}.dxf', layers, aoi)}", err=True)
-        elif fmt == "3dm":
-            from .export.rhino import write_3dm
-
-            click.echo(f"  wrote {write_3dm(out / f'{name}.3dm', layers, aoi)}", err=True)
-        elif fmt == "png":
-            from .report.sheet import render_sheet
-
-            click.echo(f"  wrote {render_sheet(out / f'{name}.png', aoi, layers, metrics, None)}", err=True)
+        click.echo(f"  wrote {write_georef(out / f'{name}.georef.json', aoi)}", err=True)
 
 
 @main.command()

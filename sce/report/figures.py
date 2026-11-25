@@ -46,7 +46,7 @@ def figure_ground(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
         w = water.gdf[water.gdf["class"] == "water"]
         if len(w):
             w.plot(ax=ax, facecolor=S.WATER, edgecolor="none", zorder=1)
-        g = water.gdf[water.gdf["class"] == "green"]
+        g = water.gdf[water.gdf["class"] == "green_space"]
         if len(g):
             g.plot(ax=ax, facecolor=S.GREEN, edgecolor="none", alpha=0.55, zorder=1)
 
