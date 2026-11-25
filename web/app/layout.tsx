@@ -9,8 +9,8 @@ import { ClerkShell } from "@/components/ClerkShell";
 const archivo = Archivo({ subsets: ["latin"], axes: ["wdth"], variable: "--font-archivo", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Site picker",
-  description: "Pick a site, preview the buildings and analyse the context before you download CAD.",
+  title: "Quadrat",
+  description: "Drop a square on any site, see its buildings, density, land use and climate, and download it as CAD.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };

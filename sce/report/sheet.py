@@ -174,7 +174,7 @@ def _metrics_table(ax, metrics: dict[str, Any]) -> None:
 def _header(fig, aoi: AOI) -> None:
     lon, lat = aoi.centroid_lonlat
     fig.text(0.035, 0.955, aoi.name.upper(), fontsize=S.FS["title"], color=S.INK, weight="bold", va="top")
-    fig.text(0.035, 0.925, "SITE CONTEXT REPORT", fontsize=S.FS["small"], color=S.MUTED, va="top")
+    fig.text(0.035, 0.925, "QUADRAT  SITE CONTEXT REPORT", fontsize=S.FS["small"], color=S.MUTED, va="top")
     fig.text(
         0.965,
         0.955,

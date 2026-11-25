@@ -126,7 +126,7 @@ def _add_boundary(msp, aoi) -> None:
 
 def _notes_text(aoi, layers: dict[str, LayerResult]) -> list[str]:
     lines = [
-        f"Site Context Export: {aoi.name}",
+        f"Quadrat export: {aoi.name}",
         f"Centre (lon,lat): {aoi.centroid_lonlat[0]:.6f}, {aoi.centroid_lonlat[1]:.6f}",
         f"CRS: {aoi.epsg}",
         f"Area: {aoi.area_ha:.2f} ha ({aoi.area_m2:.0f} m2)",

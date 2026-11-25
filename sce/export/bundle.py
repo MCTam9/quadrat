@@ -52,7 +52,7 @@ def readme_text(aoi: Any, layers: dict[str, LayerResult], names: list[str]) -> s
     lon, lat = aoi.centroid_lonlat
     edge = 2 * (aoi.radius_m or 0)
     lines = [
-        "SITE CONTEXT REPORT EXPORT",
+        "QUADRAT EXPORT",
         "==========================",
         "",
         f"Centre (lon, lat): {lon:.6f}, {lat:.6f}",

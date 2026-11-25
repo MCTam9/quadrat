@@ -198,7 +198,7 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Site Context Report API", lifespan=_lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title="Quadrat API", lifespan=_lifespan, docs_url=None, redoc_url=None)
 if CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -345,7 +345,7 @@ def export(req: ExportRequest) -> StreamingResponse:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
 
-    fname = f"sce-{req.lat:.5f}-{req.lon:.5f}-{round(req.half_width_m * 2)}m.zip"
+    fname = f"quadrat-{req.lat:.5f}-{req.lon:.5f}-{round(req.half_width_m * 2)}m.zip"
     return StreamingResponse(
         _iter_file(archive),
         media_type="application/zip",

@@ -223,7 +223,7 @@ def test_export_zip_from_cache(client, calls):
     _load(client)
     r = client.post("/api/export", json=_body(formats=["dxf"], report=False))
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
-    assert "sce-51.50000--0.10000-600m.zip" in r.headers["content-disposition"]
+    assert "quadrat-51.50000--0.10000-600m.zip" in r.headers["content-disposition"]
     assert len(calls) == 1  # no second fetch
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert {"dossier.json", "README.txt", "georef.json", "site.dxf"} <= set(names)

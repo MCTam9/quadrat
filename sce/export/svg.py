@@ -140,7 +140,7 @@ def write_svg(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:
             "height": _fmt(vb[3]),
         },
     )
-    ET.SubElement(root, "title").text = f"Site Context Export: {aoi.name}"
+    ET.SubElement(root, "title").text = f"Quadrat export: {aoi.name}"
     ET.SubElement(
         root,
         "rect",
