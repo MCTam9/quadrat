@@ -52,6 +52,7 @@ from rasterio.warp import Resampling, reproject
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._terrain_grid import inside_aoi
 
 MOLLWEIDE = CRS.from_user_input("ESRI:54009")
 BASE_URL = (
@@ -146,7 +147,9 @@ class GhslBuildingHeightProvider(Provider):
             dst_nodata=np.nan,
         )
 
-        total_cells = dst_arr.size
+        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
+        dst_arr[~inside] = np.nan
+        total_cells = int(inside.sum())
         valid_mask = np.isfinite(dst_arr) & (dst_arr > 0.0)
         valid = dst_arr[valid_mask]
         coverage = float(np.isfinite(dst_arr).sum()) / float(total_cells) if total_cells else 0.0

@@ -10,10 +10,10 @@ import pytest
 
 pytest.importorskip("sce.providers")
 
-# The layer vocabulary is defined once, in sce.cli, because the CLI has to
+# The layer vocabulary is defined once, in sce.pipeline, because the CLI has to
 # offer it as a choice anyway. Copying it here would mean a new layer passes its
 # own test while the command that fetches it has never heard of it.
-from sce.cli import LAYERS as _LAYER_TUPLE
+from sce.pipeline import LAYERS as _LAYER_TUPLE
 from sce.registry import REGISTRY
 from sce.types import Provider
 

@@ -14,6 +14,7 @@ from shapely.ops import unary_union
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._overpass import configure_osmnx, with_overpass_fallback
 
 TAGS: dict[str, object] = {
     "landuse": True,
@@ -41,6 +42,9 @@ _CLASS_MAP: dict[str, dict[str, str]] = {
         "religious": "institutional",
         "education": "institutional",
         "institutional": "institutional",
+        "governmental": "institutional",
+        "flowerbed": "green",
+        "village_green": "green",
         "military": "other",
         "quarry": "other",
         "brownfield": "other",
@@ -79,12 +83,10 @@ class OsmLanduseProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
-        ox.settings.cache_folder = str(cache.root / "osmnx")
-        ox.settings.use_cache = True
-        (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
+        configure_osmnx(cache)
 
         try:
-            gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags=TAGS)
+            gdf = with_overpass_fallback(ox.features.features_from_polygon, aoi.geometry_wgs84, tags=TAGS)
         except Exception as exc:
             raise RuntimeError(f"osm_landuse: Overpass query failed: {exc}") from exc
 

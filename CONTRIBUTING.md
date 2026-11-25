@@ -20,10 +20,14 @@ downstream, so change them deliberately and expect the meta-tests to argue.
 
 - `sce/aoi.py` — the CRS spine. `AOI.from_point(lon, lat, radius_m, name)`.
   Key API: `aoi.crs` (pyproj CRS, always projected metres), `aoi.geometry`
-  (shapely Polygon, a square, in `aoi.crs`), `aoi.centroid_lonlat` -> (lon, lat),
+  (shapely Polygon in `aoi.crs`: a square aligned to TRUE north, so in UTM it sits
+  rotated by the grid convergence, up to ~3 deg; never assume an axis-aligned box,
+  and blank raster cells outside it with `_terrain_grid.inside_aoi`), `aoi.centroid_lonlat` -> (lon, lat),
   `aoi.bbox_wgs84` -> (w, s, e, n), `aoi.geometry_wgs84`, `aoi.area_m2`,
   `aoi.area_ha`, `aoi.area_km2`, `aoi.epsg` (e.g. "EPSG:32642"),
   `aoi.to_metric(gdf)`, `aoi.clip(gdf)`, `aoi.key()`, `aoi.provenance()`.
+  `from_point(..., crs=...)` pins the CRS instead of choosing one; the web app
+  uses it so a square cut from a padded fetch shares that fetch's CRS.
   Also `assert_metric_crs(crs, where=...)` which raises `NonMetricCRSError`
   on any geographic CRS. `WGS84` is exported from this module.
 - `sce/types.py` — `Source`, `LayerResult`, `Provider`.
@@ -87,13 +91,38 @@ invent a number: when coverage is too low, return None and report the coverage.
 5. Use `aoi.area_m2` as the single area denominator for every density.
 6. Normalise osmnx orientation entropy from nats to 0..1 before printing.
 
+## Pipeline, clipping and exports
+
+- `sce/pipeline.py` — the report sequence shared by the CLI and `api/main.py`:
+  `build_aoi`, `fetch_layers` (osmnx layers run serially because osmnx settings
+  are global; the rest run in threads), `analyse`, `run_report`, and the
+  `EXPORTERS` table. A new export format is one writer in `sce/export/` with the
+  signature `write_x(path, layers, aoi) -> Path` plus one `EXPORTERS` entry; the
+  CLI `--export` choices and the web API pick it up from there.
+- `sce/clip.py` — `clip_layers(layers, outer, inner)`. Anything a provider
+  derived over its whole AOI (coverage, GHSL mean height, elevation summary) must
+  be recomputed here for the inner square, or the live analysis lies.
+- `sce/heights.py` — fills missing building heights from a per-building-resolution
+  height raster (EA LiDAR nDSM). Never fills a building it cannot measure.
+- Shared helpers: `sce/export/_contours.py` (one contour implementation for every
+  vector format) and `sce/export/_georef.py` (CRS and local-origin sidecar).
+- OSM providers call `configure_osmnx(cache)` and wrap queries in
+  `with_overpass_fallback(...)` from `sce/providers/_overpass.py`.
+
+## Web app
+
+`api/main.py` (FastAPI, `pip install -e ".[web]"`) and `web/` (Next.js). The API
+verifies Clerk session JWTs unless `SCE_AUTH_DISABLED=1` (local development only).
+Web checks run in CI as their own job: `npm run typecheck`, `lint`, `test`, `build`.
+
 ## Style
 
 Type hints, `from __future__ import annotations`, no comments that restate the
 code, docstrings that explain *why*. Line length 100. No new dependencies
 without saying so. Prefer stdlib and what is already installed:
 osmnx 2.1.1, geopandas 1.1.4, shapely 2.x, pyproj, rasterio 1.5.1, matplotlib,
-numpy, pandas, requests, networkx, pyarrow, ezdxf 1.4.4, click.
+numpy, pandas, requests, networkx, pyarrow, ezdxf 1.4.4, click. Optional extras:
+`[rhino]` rhino3dm, `[mesh]` trimesh + mapbox-earcut, `[web]` fastapi, uvicorn, pyjwt.
 
 ## Tests
 

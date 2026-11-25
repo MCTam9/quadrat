@@ -25,6 +25,9 @@ now runs in about a minute, anywhere.
 | `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, with QGIS styles |
 | `<site>.dxf` | Real-world metres, layered for AutoCAD, Rhino, Revit and Vectorworks |
 | `<site>.3dm` | Rhino model: buildings with known heights extruded to solids, the rest left as flat curves |
+| `<site>.svg` | Plan drawing, 1 unit = 1 m, one group per CAD layer (imports as layers in Illustrator/Inkscape) |
+| `<site>.geojson` | Every layer in WGS84 (RFC 7946), with height and height source per building |
+| `<site>.glb` / `.obj` | 3D mesh: terrain plus buildings seated on it, at a local origin recorded in `georef.json` |
 | `compare.pdf` | Two to four sites at one shared scale |
 
 ## Verified on three continents
@@ -131,7 +134,8 @@ the sheet records the offset between the site and the grid point actually used.
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"            # CLI + tests
+pip install -e ".[rhino,mesh,web]" # .3dm, .glb/.obj, and the web API
 ```
 
 Pure pip on Python 3.12–3.14. No conda, no system GDAL.
@@ -181,6 +185,23 @@ registry rather than maintained by hand.
 
 The MIT licence in [LICENSE](LICENSE) covers this source code only. Data the
 tool retrieves carries its own terms, and some of those are share-alike.
+
+## Web site picker
+
+A private web interface lives in `api/` (FastAPI) and `web/` (Next.js, MapLibre,
+Clerk). Drag a square on the map, see the analysis update as you move it, preview
+buildings coloured by where their height came from, and download every format as
+one ZIP. The first placement fetches a padded area around the square (about a
+minute when nothing is cached); moving or resizing within it re-analyses in
+under a second. See [web/README.md](web/README.md) to run it locally;
+`vercel.json` deploys both halves as one Vercel project.
+
+In England, building heights missing from OpenStreetMap are measured from the
+Environment Agency's 1 m LiDAR surface and terrain models (Open Government
+Licence), so FSI rests on measured heights rather than a 100 m satellite average.
+
+OSM queries fall back across Overpass instances (`SCE_OVERPASS_URLS`), because
+the main public server regularly answers "at capacity".
 
 ## Roadmap
 

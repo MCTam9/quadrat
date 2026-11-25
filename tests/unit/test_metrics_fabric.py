@@ -117,3 +117,22 @@ def test_geographic_crs_rejected():
 
 def test_requires_attribute_declared():
     assert fabric_metrics.REQUIRES == ("buildings",)
+
+
+def test_building_count_reported():
+    """The web panel's Buildings tile reads this; it was missing entirely."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    from sce.aoi import AOI
+    from sce.metrics.fabric import fabric_metrics
+    from sce.types import LayerResult
+
+    aoi = AOI.from_point(-0.1, 51.5, 300.0)
+    cx, cy = aoi.geometry.centroid.x, aoi.geometry.centroid.y
+    gdf = gpd.GeoDataFrame(
+        geometry=[box(cx, cy, cx + 10, cy + 10), box(cx + 50, cy, cx + 60, cy + 10)], crs=aoi.crs
+    )
+    assert fabric_metrics({"buildings": LayerResult("buildings", "t", gdf=gdf)}, aoi)["building_count"] == 2
+    empty = gpd.GeoDataFrame(geometry=[], crs=aoi.crs)
+    assert fabric_metrics({"buildings": LayerResult("buildings", "t", gdf=empty)}, aoi)["building_count"] == 0

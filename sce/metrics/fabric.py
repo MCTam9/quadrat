@@ -95,6 +95,7 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
         result.update(
             {
                 "gsi": 0.0,
+                "building_count": 0,
                 "footprint_area_median_m2": None,
                 "footprint_area_iqr_m2": None,
                 "fsi": None,
@@ -105,6 +106,7 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     else:
         footprint_union_area, _ = _valid_union_area(gdf.geometry.values)
         result["gsi"] = footprint_union_area / aoi.area_m2 if aoi.area_m2 else None
+        result["building_count"] = len(gdf)
 
         areas = gdf.geometry.apply(lambda g: make_valid(g).area if g is not None else np.nan).dropna()
         if len(areas):
@@ -123,7 +125,12 @@ def fabric_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             per_building_area = gdf.geometry.apply(lambda g: make_valid(g).area if g is not None else 0.0)
             floor_area = float((per_building_area * storeys.fillna(0.0)).sum())
             result["fsi"] = floor_area / aoi.area_m2 if aoi.area_m2 else None
-            result["fsi_source"] = "building heights (OSM height/levels tags)"
+            lidar = "height_source" in gdf.columns and (gdf["height_source"] == "lidar").any()
+            result["fsi_source"] = (
+                "building heights (OSM height/levels tags, gaps measured from EA LiDAR)"
+                if lidar
+                else "building heights (OSM height/levels tags)"
+            )
         else:
             ghsl = layers.get("building_height")
             ghsl_mean_height = (ghsl.data or {}).get("mean_height_m") if ghsl is not None else None

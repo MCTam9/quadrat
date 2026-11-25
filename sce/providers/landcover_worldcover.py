@@ -23,6 +23,7 @@ from rasterio.windows import from_bounds
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._terrain_grid import inside_aoi
 
 BUCKET_HTTPS = "https://esa-worldcover.s3.eu-central-1.amazonaws.com"
 TILE_SIZE_DEG = 3
@@ -135,13 +136,15 @@ class WorldCoverProvider(Provider):
             dst_nodata=0,
         )
 
-        total = dst_arr.size
+        inside = inside_aoi(dst_arr.shape, dst_transform, aoi)
+        dst_arr[~inside] = 0
+        total = max(int(inside.sum()), 1)
         fractions: dict[str, float] = {}
         for code, cls_name in CLASSES.items():
             count = int(np.count_nonzero(dst_arr == code))
             if count:
                 fractions[cls_name] = count / total
-        unclassified = int(np.count_nonzero(dst_arr == 0))
+        unclassified = int(np.count_nonzero((dst_arr == 0) & inside))
         if unclassified:
             fractions["Unclassified/no data"] = unclassified / total
 

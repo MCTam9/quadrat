@@ -8,6 +8,7 @@ import pandas as pd
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
 from ._height import height_and_source
+from ._overpass import configure_osmnx, with_overpass_fallback
 
 
 class OsmBuildingsProvider(Provider):
@@ -28,12 +29,12 @@ class OsmBuildingsProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
-        ox.settings.cache_folder = str(cache.root / "osmnx")
-        ox.settings.use_cache = True
-        (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
+        configure_osmnx(cache)
 
         try:
-            gdf = ox.features.features_from_polygon(aoi.geometry_wgs84, tags={"building": True})
+            gdf = with_overpass_fallback(
+                ox.features.features_from_polygon, aoi.geometry_wgs84, tags={"building": True}
+            )
         except Exception as exc:
             raise RuntimeError(f"osm_buildings: Overpass query failed: {exc}") from exc
 

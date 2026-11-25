@@ -124,3 +124,11 @@ def test_overlapping_classes_still_partition_the_site():
     assert out["landuse_green_space_fraction"] == pytest.approx(0.25, abs=1e-3)
     assert out["landuse_residential_fraction"] == pytest.approx(0.75, abs=1e-3)
     assert out["landuse_unmapped_fraction"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_provider_green_class_counts_as_green_space():
+    """osm_landuse emits "green"; it must not fall into "other"."""
+    from sce.metrics.landuse import _normalise_class
+
+    assert _normalise_class("green") == "green_space"
+    assert _normalise_class("institutional") == "civic"

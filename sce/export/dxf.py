@@ -11,10 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import ezdxf
-import numpy as np
 from ezdxf.enums import TextEntityAlignment
 
 from ..types import LayerResult
+from ._contours import terrain_contours
 
 # name -> (ACI colour, lineweight in 1/100 mm, as ezdxf expects)
 _LAYER_SPEC: dict[str, tuple[int, int]] = {
@@ -25,8 +25,6 @@ _LAYER_SPEC: dict[str, tuple[int, int]] = {
     "TOPO-CONTOUR": (30, 9),  # orange-brown
     "TEXT-NOTES": (7, 0),
 }
-
-_CONTOUR_INTERVALS = (1.0, 2.0, 5.0, 10.0, 25.0)
 
 
 def _ensure_layers(doc) -> None:
@@ -112,84 +110,9 @@ def _write_landuse(msp, result: LayerResult | None) -> int:
     return count
 
 
-def _choose_contour_interval(zmin: float, zmax: float) -> float:
-    span = max(zmax - zmin, 1e-6)
-    target = span / 8.0
-    for interval in _CONTOUR_INTERVALS:
-        if interval >= target:
-            return interval
-    return _CONTOUR_INTERVALS[-1]
-
-
-def _contour_segments(
-    array: np.ndarray, transform, interval: float
-) -> list[tuple[float, list[tuple[float, float]]]]:
-    """(elevation, [(x, y), ...]) pairs in metric coordinates.
-
-    `matplotlib.contour.ContourSet.allsegs` returns, per requested level, a
-    list of (N, 2) arrays already in whatever coordinate system X/Y were
-    given in — so building X/Y from the affine transform up front means the
-    contour vertices come out already in metric CRS coordinates, no separate
-    reprojection step needed. `allsegs` is deprecated in newer matplotlib but
-    still present in 3.11.x (verified against the installed version); if a
-    future upgrade removes it, `get_paths()` is the vectorized fallback.
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    rows, cols = array.shape
-    row_idx, col_idx = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
-    xs, ys = transform @ (col_idx + 0.5, row_idx + 0.5)
-
-    finite = array[np.isfinite(array)]
-    if finite.size == 0:
-        return []
-    zmin, zmax = float(finite.min()), float(finite.max())
-    if zmax - zmin < 1e-9:
-        return []
-    levels = list(np.arange(np.floor(zmin / interval) * interval, zmax + interval, interval))
-    levels = [lv for lv in levels if zmin < lv < zmax]
-    if not levels:
-        return []
-
-    fig, ax = plt.subplots()
-    try:
-        cs = ax.contour(xs, ys, array, levels=levels)
-        out: list[tuple[float, list[tuple[float, float]]]] = []
-        if hasattr(cs, "allsegs"):
-            for level, segs in zip(cs.levels, cs.allsegs, strict=False):
-                out.extend(
-                    (float(level), [(float(x), float(y)) for x, y in seg]) for seg in segs if len(seg) >= 2
-                )
-        else:  # pragma: no cover - fallback for matplotlib >= 3.10 collections removal
-            for level, path in zip(cs.levels, cs.get_paths(), strict=False):
-                out.extend(
-                    (float(level), [(float(x), float(y)) for x, y in polygon])
-                    for polygon in path.to_polygons()
-                    if len(polygon) >= 2
-                )
-        return out
-    finally:
-        plt.close(fig)
-
-
 def _write_contours(msp, result: LayerResult | None) -> int:
-    if result is None or result.raster is None:
-        return 0
-    raster = result.raster
-    array = raster.get("array")
-    transform = raster.get("transform")
-    if array is None or transform is None:
-        return 0
-    array = np.asarray(array, dtype=float)
-    finite = array[np.isfinite(array)]
-    if finite.size == 0:
-        return 0
-    interval = _choose_contour_interval(float(finite.min()), float(finite.max()))
     count = 0
-    for elevation, pts in _contour_segments(array, transform, interval):
+    for elevation, pts in terrain_contours(result):
         pl = msp.add_lwpolyline(pts, close=False, dxfattribs={"layer": "TOPO-CONTOUR"})
         pl.set_xdata("SCE", [(1000, f"ELEV={elevation:.3f}")])
         count += 1

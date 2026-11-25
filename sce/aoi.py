@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pyproj import CRS, Transformer
-from shapely.geometry import Polygon, box, shape
+from shapely.geometry import Polygon, shape
 from shapely.ops import transform as shapely_transform
 
 WGS84 = CRS.from_epsg(4326)
@@ -80,6 +80,36 @@ def choose_metric_crs(lon: float, lat: float, radius_m: float) -> CRS:
     return utm_crs_for(lon, lat)
 
 
+def true_north_square(lon: float, lat: float, half_width_m: float, crs: CRS) -> Polygon:
+    """A square of ground half-width `half_width_m`, sides aligned to TRUE north,
+    expressed in `crs`.
+
+    UTM grid north departs from true north by the grid convergence (2.25 deg in
+    central London, ~3 deg at a zone edge), so a box drawn in UTM coordinates is
+    visibly rotated against a north-up map and against the square a user drew on
+    it. Building the square in an azimuthal equidistant projection centred on
+    the site (true north up, true distances from the centre) and projecting its
+    corners keeps the standard EPSG grid for every export while the site itself
+    is the upright square the user selected. In the AOI CRS it is a square
+    rotated by the convergence, so code must use `aoi.geometry`, never assume an
+    axis-aligned box; `bounds_metric` is its (slightly larger) bounding box.
+    `half_width_m` is in the AOI CRS's metres, like every other length in sce:
+    the local square is divided by the CRS point scale factor (UTM 0.9996 to
+    ~1.001) so a 600 m site measures exactly 600 in the DXF and its area is
+    exactly (2r)^2, as `aoi.area_m2` has always promised.
+    """
+    from pyproj import Proj
+
+    local = CRS.from_proj4(f"+proj=aeqd +lat_0={lat:.9f} +lon_0={lon:.9f} +datum=WGS84 +units=m +no_defs")
+    tf = Transformer.from_crs(local, crs, always_xy=True)
+    k = math.sqrt(Proj(crs).get_factors(lon, lat).areal_scale)
+    r = half_width_m / k
+    # Four corners only: a straight edge in the local projection bends by well
+    # under a millimetre in UTM over a few kilometres, and CAD users expect a
+    # four-vertex boundary.
+    return Polygon([tf.transform(x, y) for x, y in ((-r, -r), (r, -r), (r, r), (-r, r))])
+
+
 @dataclass(frozen=True)
 class AOI:
     """An area of interest with exactly one metric CRS, chosen once.
@@ -102,23 +132,25 @@ class AOI:
             raise ValueError(f"AOI({self.name}): empty geometry")
 
     @classmethod
-    def from_point(cls, lon: float, lat: float, radius_m: float, name: str = "site") -> AOI:
+    def from_point(
+        cls, lon: float, lat: float, radius_m: float, name: str = "site", *, crs: CRS | None = None
+    ) -> AOI:
         """Buffer the PROJECTED centre, never degrees.
 
         The single most common geospatial error is buffering a lon/lat point by
         a value meant as metres. Doing it here, once, in projected space, means
         no caller can make that mistake.
+
+        `crs` pins the metric CRS instead of choosing one. The web app fetches a
+        padded square once and clips smaller squares out of it; the inner squares
+        must share the padded square's CRS or the clip would silently reproject.
         """
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
             raise ValueError(f"lon/lat out of range: {lon},{lat}")
         if radius_m <= 0:
             raise ValueError("radius_m must be positive")
-        crs = choose_metric_crs(lon, lat, radius_m)
-        to_metric = Transformer.from_crs(WGS84, crs, always_xy=True)
-        cx, cy = to_metric.transform(lon, lat)
-        # A square AOI, not a circle: graph_from_point returns a square, and one
-        # area denominator must be used by every metric.
-        geom = box(cx - radius_m, cy - radius_m, cx + radius_m, cy + radius_m)
+        crs = choose_metric_crs(lon, lat, radius_m) if crs is None else CRS.from_user_input(crs)
+        geom = true_north_square(lon, lat, radius_m, crs)
         return cls(
             name=name,
             geometry=geom,

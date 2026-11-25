@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from ..types import LayerResult
+from ._contours import terrain_contours
 
 _LAYER_NAMES = (
     "SITE-BOUNDARY",
@@ -39,8 +40,6 @@ _LAYER_COLOUR: dict[str, tuple[int, int, int, int]] = {
     "ROAD-CENTRELINE": (20, 20, 20, 255),
     "TOPO-CONTOUR": (170, 110, 40, 255),
 }
-
-_CONTOUR_INTERVALS = (1.0, 2.0, 5.0, 10.0, 25.0)
 
 
 def _require_rhino3dm():
@@ -179,77 +178,10 @@ def _write_streets(rhino3dm, doc, result: LayerResult | None) -> int:
     return count
 
 
-def _choose_contour_interval(zmin: float, zmax: float) -> float:
-    span = max(zmax - zmin, 1e-6)
-    target = span / 8.0
-    for interval in _CONTOUR_INTERVALS:
-        if interval >= target:
-            return interval
-    return _CONTOUR_INTERVALS[-1]
-
-
-def _contour_segments(
-    array: np.ndarray, transform, interval: float
-) -> list[list[tuple[float, float, float]]]:
-    """Reuse the same matplotlib-contour approach as the DXF exporter, kept
-    local so this module has no import-time dependency on `export/dxf.py`."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    rows, cols = array.shape
-    row_idx, col_idx = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
-    xs, ys = transform @ (col_idx + 0.5, row_idx + 0.5)
-
-    finite = array[np.isfinite(array)]
-    if finite.size == 0:
-        return []
-    zmin, zmax = float(finite.min()), float(finite.max())
-    if zmax - zmin < 1e-9:
-        return []
-    levels = list(np.arange(np.floor(zmin / interval) * interval, zmax + interval, interval))
-    levels = [lv for lv in levels if zmin < lv < zmax]
-    if not levels:
-        return []
-
-    fig, ax = plt.subplots()
-    try:
-        cs = ax.contour(xs, ys, array, levels=levels)
-        out: list[list[tuple[float, float, float]]] = []
-        if hasattr(cs, "allsegs"):
-            for level, segs in zip(cs.levels, cs.allsegs, strict=False):
-                out.extend(
-                    [(float(x), float(y), float(level)) for x, y in seg] for seg in segs if len(seg) >= 2
-                )
-        else:  # pragma: no cover - fallback for matplotlib >= 3.10 collections removal
-            for level, path in zip(cs.levels, cs.get_paths(), strict=False):
-                out.extend(
-                    [(float(x), float(y), float(level)) for x, y in polygon]
-                    for polygon in path.to_polygons()
-                    if len(polygon) >= 2
-                )
-        return out
-    finally:
-        plt.close(fig)
-
-
 def _write_contours(rhino3dm, doc, result: LayerResult | None) -> int:
-    if result is None or result.raster is None:
-        return 0
-    raster = result.raster
-    array = raster.get("array")
-    transform = raster.get("transform")
-    if array is None or transform is None:
-        return 0
-    array = np.asarray(array, dtype=float)
-    finite = array[np.isfinite(array)]
-    if finite.size == 0:
-        return 0
-    interval = _choose_contour_interval(float(finite.min()), float(finite.max()))
     count = 0
-    for pts in _contour_segments(array, transform, interval):
-        curve = _open_polyline_curve(rhino3dm, pts)
+    for elevation, pts in terrain_contours(result):
+        curve = _open_polyline_curve(rhino3dm, [(x, y, elevation) for x, y in pts])
         if curve is not None:
             doc.Objects.AddCurve(curve, _attrs(rhino3dm, doc, "TOPO-CONTOUR"))
             count += 1

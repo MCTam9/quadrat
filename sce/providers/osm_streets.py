@@ -6,6 +6,7 @@ import osmnx as ox
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._overpass import configure_osmnx, with_overpass_fallback
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
@@ -28,12 +29,11 @@ class OsmStreetsProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
-        ox.settings.cache_folder = str(cache.root / "osmnx")
-        ox.settings.use_cache = True
-        (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
+        configure_osmnx(cache)
 
         try:
-            graph = ox.graph.graph_from_polygon(
+            graph = with_overpass_fallback(
+                ox.graph.graph_from_polygon,
                 aoi.geometry_wgs84,
                 network_type="all_public",
                 simplify=True,

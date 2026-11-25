@@ -36,6 +36,10 @@ NORMALISED_CLASSES = {
     "education": "civic",
     "religious": "civic",
     "green_space": "green_space",
+    # sce/providers/osm_landuse.py emits "green"; without this every park,
+    # wood and meadow was counted as "other" in the land-use mix.
+    "green": "green_space",
+    "governmental": "civic",
     "park": "green_space",
     "forest": "green_space",
     "grass": "green_space",

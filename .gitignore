@@ -8,3 +8,7 @@ out/
 tests/fixtures/cache/
 .DS_Store
 *.pdf
+node_modules/
+.next/
+.vercel/
+.env*.local
