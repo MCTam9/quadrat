@@ -23,42 +23,13 @@ from shapely import make_valid
 
 from ..aoi import AOI, assert_metric_crs
 from ..types import LayerResult
+from ..vocab import LANDUSE_IDS, normalise_landuse
 
 LANDUSE_DEGRADED_THRESHOLD = 0.5
 
-NORMALISED_CLASSES = {
-    "residential": "residential",
-    "commercial": "commercial",
-    "retail": "commercial",
-    "industrial": "industrial",
-    "civic": "civic",
-    "institutional": "civic",
-    "education": "civic",
-    "religious": "civic",
-    "green_space": "green_space",
-    # sce/providers/osm_landuse.py emits "green"; without this every park,
-    # wood and meadow was counted as "other" in the land-use mix.
-    "green": "green_space",
-    "governmental": "civic",
-    "park": "green_space",
-    "forest": "green_space",
-    "grass": "green_space",
-    "meadow": "green_space",
-    "farmland": "agriculture",
-    "farmyard": "agriculture",
-    "orchard": "agriculture",
-    "vineyard": "agriculture",
-    "water": "water",
-    "transport": "transport",
-    "railway": "transport",
-    "parking": "transport",
-}
-
 
 def _normalise_class(raw: str | None) -> str:
-    if raw is None:
-        return "other"
-    return NORMALISED_CLASSES.get(str(raw).lower(), "other")
+    return normalise_landuse(raw)
 
 
 def _class_area(geoms) -> float:
@@ -75,20 +46,7 @@ def _class_area(geoms) -> float:
 # areas therefore exceeds the mapped area and the bar runs past 100%. Classes are
 # instead allocated disjointly in this order, most specific first, each class
 # taking only the ground no earlier class has already claimed.
-ALLOCATION_ORDER = (
-    "water",
-    "green_space",
-    "green",
-    "transport",
-    "institutional",
-    "civic",
-    "retail",
-    "commercial",
-    "industrial",
-    "agriculture",
-    "residential",
-    "other",
-)
+ALLOCATION_ORDER = LANDUSE_IDS
 
 
 def _osm_landuse_fractions(gdf, aoi: AOI) -> dict[str, Any]:

@@ -126,9 +126,12 @@ def test_overlapping_classes_still_partition_the_site():
     assert out["landuse_unmapped_fraction"] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_provider_green_class_counts_as_green_space():
-    """osm_landuse emits "green"; it must not fall into "other"."""
+def test_landuse_classes_come_from_the_vocabulary():
+    """One vocabulary: class ids pass through, raw OSM values map, farmland is agriculture."""
     from sce.metrics.landuse import _normalise_class
 
-    assert _normalise_class("green") == "green_space"
+    assert _normalise_class("green_space") == "green_space"
+    assert _normalise_class("park") == "green_space"
+    assert _normalise_class("farmland") == "agriculture"
     assert _normalise_class("institutional") == "civic"
+    assert _normalise_class("something-else") == "other"

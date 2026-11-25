@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from ..types import LayerResult
+from ..vocab import LANDUSE, colours, normalise_landuse
 from ._contours import terrain_contours
 from .dxf import _notes_text
 
@@ -45,16 +46,8 @@ _STREET_WIDTH = {
 }
 _STREET_DEFAULT = 1.5  # footways, tracks, paths and unknown classes
 
-_LANDUSE_FILL = {
-    "park": "#cfe8c4",
-    "grass": "#cfe8c4",
-    "forest": "#b7d9a8",
-    "wood": "#b7d9a8",
-    "water": "#c8dff0",
-    "residential": "#f0e6d6",
-    "commercial": "#f2dcdc",
-    "industrial": "#e4e0ea",
-}
+# From sce/vocab.py: keyed on the classes the provider actually emits.
+_LANDUSE_FILL = colours(LANDUSE, sheet=True)
 _LANDUSE_DEFAULT = "#ececec"
 
 
@@ -178,7 +171,7 @@ def write_svg(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:
             if geom is None or geom.is_empty or geom.geom_type not in ("Polygon", "MultiPolygon"):
                 continue
             fill = (
-                _LANDUSE_FILL.get(str(row[cls_col]).lower(), _LANDUSE_DEFAULT)
+                _LANDUSE_FILL.get(normalise_landuse(row[cls_col]), _LANDUSE_DEFAULT)
                 if cls_col
                 else _LANDUSE_DEFAULT
             )

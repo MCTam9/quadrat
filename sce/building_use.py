@@ -24,21 +24,11 @@ from typing import Any
 
 import pandas as pd
 
-USES = ("residential", "commercial", "retail", "industrial", "civic", "other")
+from .vocab import BUILDING_TAG_USE, BUILDING_USE_IDS
 
-_BUILDING_TAG: dict[str, str] = {}
-for _use, _tags in {
-    "residential": "residential house detached semidetached_house terrace terraced_house apartments flats "
-    "bungalow dormitory houseboat static_caravan cabin farm",
-    "commercial": "commercial office offices hotel bank",
-    "retail": "retail supermarket kiosk shop mall",
-    "industrial": "industrial warehouse factory manufacture service storage_tank",
-    "civic": "civic public government school university college kindergarten hospital church chapel "
-    "cathedral mosque synagogue temple religious monastery fire_station train_station transportation "
-    "museum library theatre sports_hall",
-}.items():
-    for _t in _tags.split():
-        _BUILDING_TAG[_t] = _use
+USES = BUILDING_USE_IDS
+
+_BUILDING_TAG = BUILDING_TAG_USE
 
 # Categories assigned by sce/providers/osm_amenities.py -> building use.
 _POI_CATEGORY = {
@@ -56,7 +46,7 @@ _LANDUSE_CLASS = {
     "commercial": "commercial",
     "retail": "retail",
     "industrial": "industrial",
-    "institutional": "civic",
+    "civic": "civic",
 }
 
 _CIVIC_AMENITIES = {

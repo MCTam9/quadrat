@@ -14,6 +14,7 @@ from shapely.ops import unary_union
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ..vocab import landuse_class
 from ._overpass import configure_osmnx, with_overpass_fallback
 
 TAGS: dict[str, object] = {
@@ -22,54 +23,9 @@ TAGS: dict[str, object] = {
     "natural": ["water", "wood", "scrub"],
 }
 
-_CLASS_MAP: dict[str, dict[str, str]] = {
-    "landuse": {
-        "residential": "residential",
-        "commercial": "commercial",
-        "retail": "retail",
-        "industrial": "industrial",
-        "railway": "transport",
-        "cemetery": "other",
-        "farmland": "green",
-        "farmyard": "green",
-        "forest": "green",
-        "grass": "green",
-        "meadow": "green",
-        "orchard": "green",
-        "vineyard": "green",
-        "recreation_ground": "green",
-        "allotments": "green",
-        "religious": "institutional",
-        "education": "institutional",
-        "institutional": "institutional",
-        "governmental": "institutional",
-        "flowerbed": "green",
-        "village_green": "green",
-        "military": "other",
-        "quarry": "other",
-        "brownfield": "other",
-        "construction": "other",
-        "garages": "other",
-    },
-    "leisure": {
-        "park": "green",
-        "garden": "green",
-        "pitch": "green",
-    },
-    "natural": {
-        "water": "water",
-        "wood": "green",
-        "scrub": "green",
-    },
-}
-
 
 def _classify(row: pd.Series) -> str:
-    for key, mapping in _CLASS_MAP.items():
-        value = row.get(key)
-        if isinstance(value, str) and value in mapping:
-            return mapping[value]
-    return "other"
+    return landuse_class(row)
 
 
 class OsmLanduseProvider(Provider):
