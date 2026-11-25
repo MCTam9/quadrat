@@ -35,6 +35,16 @@ import { reverseName, type SiteName } from "@/lib/site-name";
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
 const DEFAULT_HALF = 250;
+
+/** One-click 3D views, as in CAD: plan, four axonometric-style views from each corner, and street level. */
+const VIEWS: { label: string; title: string; bearing?: number; pitch: number }[] = [
+  { label: "Plan", title: "Top view, north up", bearing: 0, pitch: 0 },
+  { label: "SW", title: "From the south-west", bearing: 45, pitch: 55 },
+  { label: "SE", title: "From the south-east", bearing: -45, pitch: 55 },
+  { label: "NE", title: "From the north-east", bearing: -135, pitch: 55 },
+  { label: "NW", title: "From the north-west", bearing: 135, pitch: 55 },
+  { label: "Street", title: "Eye level, keeping the current direction", pitch: 78 },
+];
 const WORLD = { lon: 10, lat: 30, zoom: 1.6 };
 
 interface Toast {
@@ -338,9 +348,24 @@ export function Picker() {
         <div className="pointer-events-auto"><Search onPick={pick} /></div>
         <LayersControl layers={layerState} onChange={changeLayers} threeD={threeD} onThreeD={setThreeD} />
         {threeD && (
-          <p className="sheet pointer-events-auto self-start px-2 py-1 text-[11px] text-graphite">
-            Orbit: <kbd className="font-semibold text-ink">⌥</kbd> + two-finger scroll, right-drag, or twist two fingers
-          </p>
+          <div className="sheet pointer-events-auto self-start text-[11px]">
+            <div className="flex" role="group" aria-label="3D views">
+              {VIEWS.map((v) => (
+                <button
+                  key={v.label}
+                  type="button"
+                  title={v.title}
+                  className="border-r border-rule px-2 py-1 last:border-r-0 hover:bg-hover"
+                  onClick={() => square && map?.easeTo({ center: [square.lon, square.lat], bearing: v.bearing ?? map.getBearing(), pitch: v.pitch, duration: 700 })}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <p className="border-t border-rule px-2 py-1 text-graphite">
+              Orbit: <kbd className="font-semibold text-ink">⌥</kbd> + two-finger scroll, or right-drag
+            </p>
+          </div>
         )}
       </div>
 
