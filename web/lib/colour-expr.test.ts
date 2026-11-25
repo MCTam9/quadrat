@@ -27,9 +27,10 @@ describe("missing-data hatch filters", () => {
       ["none", { hcat: "unknown", h: 0, btype: "unspecified" }, false],
     ];
     for (const [mode, props, expected] of cases) {
-      const e = spec.expression.createExpression(missingFilter(mode as never), { type: "boolean" } as never);
-      expect(e.result).toBe("success");
-      const got = (e.value as { evaluate: (g: unknown, f: unknown) => boolean }).evaluate({ zoom: 15 }, f(props));
+      // featureFilter is what the map itself runs, legacy-syntax detection included;
+      // createExpression alone accepted ["==", 1, 0], which the map rejects.
+      const filter = missingFilter(mode as never);
+      const got = spec.featureFilter(filter as never, "layers[0].filter").filter({ zoom: 15 } as never, f(props) as never);
       expect(got, `${mode} ${JSON.stringify(props)}`).toBe(expected);
     }
   });

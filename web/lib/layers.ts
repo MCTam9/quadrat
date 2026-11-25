@@ -73,7 +73,8 @@ export function missingFilter(mode: ColourMode): unknown[] {
   if (mode === "source") return ["==", ["get", "hcat"], "unknown"];
   if (mode === "height") return ["<=", ["get", "h"], 0];
   if (mode === "type") return ["==", ["get", "btype"], "unspecified"];
-  return ["==", 1, 0];
+  // Not ["==", 1, 0]: MapLibre reads that as a legacy filter and throws.
+  return ["boolean", false];
 }
 
 export type LegendItem = { label: string; color: string; hatch?: boolean };
