@@ -9,7 +9,9 @@ import pytest
 from affine import Affine
 from shapely.geometry import box
 
+from sce.aoi import AOI
 from sce.heights import enrich_building_heights
+from sce.raster import SiteRaster
 from sce.types import LayerResult
 
 CRS = "EPSG:32630"
@@ -31,14 +33,8 @@ def _layers(prefer_kind: str = "ndsm"):
         geometry=[box(10, 40, 30, 60), box(50, 40, 70, 60), box(80, 28, 82, 30)],
         crs=CRS,
     )
-    raster = {
-        "array": arr,
-        "transform": transform,
-        "crs": CRS,
-        "nodata": float("nan"),
-        "res": (1.0, 1.0),
-        "kind": prefer_kind,
-    }
+    square = AOI.from_point(-3.0, 51.0, 50.0, name="heights", crs=CRS)
+    raster = SiteRaster.from_array(arr, transform, CRS, square=square, nodata=float("nan"), kind=prefer_kind)
     return {
         "buildings": LayerResult(layer="buildings", provider="osm", gdf=gdf, coverage=1 / 3),
         "building_height": LayerResult(layer="building_height", provider="lidar", raster=raster),

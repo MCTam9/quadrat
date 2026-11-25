@@ -12,6 +12,7 @@ import numpy as np
 from affine import Affine
 from shapely.geometry import LineString, box
 
+from sce.raster import SiteRaster
 from sce.types import LayerResult, Source
 
 LON, LAT = -0.1, 51.5
@@ -45,13 +46,9 @@ def site_layers(aoi):
     res = 30.0
     n = int((maxx - minx) / res)
     yy, xx = np.mgrid[0:n, 0:n]
-    terrain = {
-        "array": (xx * 0.5 + yy * 0.2).astype(float),
-        "transform": Affine(res, 0, minx, 0, -res, maxy),
-        "crs": aoi.crs,
-        "nodata": None,
-        "res": (res, res),
-    }
+    terrain = SiteRaster.from_array(
+        (xx * 0.5 + yy * 0.2).astype(float), Affine(res, 0, minx, 0, -res, maxy), aoi.crs, square=aoi
+    )
     osm = Source("OpenStreetMap contributors", "https://www.openstreetmap.org/copyright", "ODbL 1.0")
     landuse = gpd.GeoDataFrame(
         {"class": ["park", "residential"]},

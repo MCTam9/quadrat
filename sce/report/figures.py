@@ -134,11 +134,8 @@ def terrain_hillshade(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     if t is None or t.raster is None:
         _empty(ax, "no terrain data")
         return
-    arr = np.asarray(t.raster["array"], dtype=float)
-    nodata = t.raster.get("nodata")
-    if nodata is not None:
-        arr = np.where(arr == nodata, np.nan, arr)
-    res = t.raster.get("res", (30.0, 30.0))
+    arr = t.raster.float_array()
+    res = t.raster.res
     filled = np.where(np.isnan(arr), np.nanmean(arr), arr)
 
     ls = LightSource(azdeg=315, altdeg=45)
@@ -179,7 +176,7 @@ def landcover(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
         return
     from ..providers.landcover_worldcover import CLASS_COLOURS, CLASSES
 
-    arr = np.asarray(lc.raster["array"])
+    arr = lc.raster.array
     codes = sorted(CLASSES)
     colours = [CLASS_COLOURS.get(c, "#dddddd") for c in codes]
     bounds = [c - 0.5 for c in codes] + [codes[-1] + 0.5]

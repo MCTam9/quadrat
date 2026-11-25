@@ -100,7 +100,7 @@ def test_fetch_with_local_tile_returns_dtm_bare_earth(monkeypatch, tmp_path):
     assert result.data["terrain_model"] == "DTM"
     assert result.sources[0].commercial_ok is False
     assert "CC BY-NC-SA" in result.sources[0].licence
-    valid = result.raster["array"]
+    valid = result.raster.array
     assert np.isfinite(valid).any()
 
 

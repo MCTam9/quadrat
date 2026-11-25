@@ -10,10 +10,12 @@ from __future__ import annotations
 import geopandas as gpd
 import numpy as np
 import pytest
+from affine import Affine
 from shapely.geometry import box
 
 from sce.aoi import AOI, NonMetricCRSError
 from sce.metrics.landuse import landuse_metrics
+from sce.raster import SiteRaster
 from sce.types import LayerResult
 
 
@@ -60,10 +62,16 @@ def test_no_landuse_layer_is_fully_unmapped_not_a_crash():
     assert result["landuse_degraded"] is True
 
 
+def _raster(array, aoi, nodata):
+    c = aoi.geometry.centroid
+    t = Affine(1.0, 0, c.x - 2, 0, -1.0, c.y + 1)  # a few 1 m cells around the site centre
+    return SiteRaster.from_array(array, t, aoi.crs, square=aoi, nodata=nodata)
+
+
 def test_landcover_fractions_sum_to_one():
     aoi = _aoi()
     array = np.array([[10, 10, 20, 20], [20, 30, 30, 30]], dtype=np.int16)
-    raster = {"array": array, "crs": aoi.crs, "nodata": None}
+    raster = _raster(array, aoi, None)
     layers = {"landcover": LayerResult(layer="landcover", provider="synthetic", raster=raster)}
     result = landuse_metrics(layers, aoi)
 
@@ -76,7 +84,7 @@ def test_landcover_fractions_sum_to_one():
 def test_landcover_ignores_nodata_pixels():
     aoi = _aoi()
     array = np.array([[10, 10, -1], [-1, -1, -1]], dtype=np.int16)
-    raster = {"array": array, "crs": aoi.crs, "nodata": -1}
+    raster = _raster(array, aoi, -1)
     layers = {"landcover": LayerResult(layer="landcover", provider="synthetic", raster=raster)}
     result = landuse_metrics(layers, aoi)
     assert result["landcover_class_10_fraction"] == pytest.approx(1.0)

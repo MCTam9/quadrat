@@ -32,9 +32,10 @@ from affine import Affine
 from pyproj import Transformer
 from rasterio.io import MemoryFile
 
+from ..raster import SiteRaster
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import inside_aoi, reproject_merged_to_square_grid
+from ._terrain_grid import reproject_merged_to_square_grid
 
 BASE = "https://environment.data.gov.uk/spatialdata"
 DSM_URL = f"{BASE}/lidar-composite-digital-surface-model-last-return-dsm-1m/wcs"
@@ -196,14 +197,14 @@ class EaLidarBuildingHeightProvider(Provider):
             LayerResult(
                 layer=self.layer,
                 provider=self.name,
-                raster={
-                    "array": arr,
-                    "transform": transform,
-                    "crs": aoi.crs,
-                    "nodata": float("nan"),
-                    "res": (res, res),
-                    "kind": "ndsm",
-                },
+                raster=SiteRaster.from_array(
+                    arr,
+                    transform,
+                    aoi.crs,
+                    square=aoi,
+                    nodata=float("nan"),
+                    kind="ndsm",
+                ),
                 data={"kind": "ndsm"},
                 sources=[source],
                 notes=[
@@ -220,12 +221,9 @@ class EaLidarBuildingHeightProvider(Provider):
 
         Corner cells of the bounding box belong to the neighbours, not missing LiDAR.
         """
-        arr = np.asarray(result.raster["array"], dtype=float)
-        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
-        finite = np.isfinite(arr) & inside
-        n_inside = int(inside.sum())
-        coverage = float(finite.sum()) / n_inside if n_inside else 0.0
-        tall = arr[finite & (arr > BUILDING_LIKE_MIN_M)]
+        raster = result.raster
+        coverage = raster.share_known()
+        tall = raster.values_inside(lambda v: v > BUILDING_LIKE_MIN_M)
         data = {
             **(result.data or {}),
             "mean_height_m": float(tall.mean()) if tall.size else None,

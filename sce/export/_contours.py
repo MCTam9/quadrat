@@ -87,11 +87,8 @@ def terrain_contours(result: Any) -> list[tuple[float, list[tuple[float, float]]
     """
     if result is None or result.raster is None:
         return []
-    array = result.raster.get("array")
-    transform = result.raster.get("transform")
-    if array is None or transform is None:
-        return []
-    array = np.asarray(array, dtype=float)
+    array = result.raster.float_array()
+    transform = result.raster.transform
     finite = array[np.isfinite(array)]
     if finite.size == 0:
         return []

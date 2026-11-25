@@ -11,6 +11,7 @@ from shapely.geometry import Polygon, box
 from sce.aoi import AOI
 from sce.export._georef import local_origin
 from sce.export.mesh import write_glb, write_obj
+from sce.raster import SiteRaster
 from sce.types import LayerResult
 
 trimesh = pytest.importorskip("trimesh")
@@ -21,7 +22,7 @@ def aoi() -> AOI:
     return AOI.from_point(lon=-0.1, lat=51.5, radius_m=500.0, name="test-site")
 
 
-def _terrain(aoi: AOI) -> dict:
+def _terrain(aoi: AOI) -> SiteRaster:
     minx, miny, maxx, maxy = aoi.bounds_metric
     res = 10.0
     cols, rows = int((maxx - minx) / res), int((maxy - miny) / res)
@@ -29,13 +30,7 @@ def _terrain(aoi: AOI) -> dict:
     r, c = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
     xs, _ = transform * (c + 0.5, r + 0.5)
     # Rises 1 m per 100 m eastward, from 100 m at the west edge.
-    return {
-        "array": 100.0 + (xs - minx) / 100.0,
-        "transform": transform,
-        "crs": aoi.crs,
-        "nodata": None,
-        "res": (res, res),
-    }
+    return SiteRaster.from_array(100.0 + (xs - minx) / 100.0, transform, aoi.crs, square=aoi)
 
 
 def _layers(aoi: AOI, with_terrain: bool = True) -> dict[str, LayerResult]:

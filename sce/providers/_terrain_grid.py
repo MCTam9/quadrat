@@ -18,6 +18,8 @@ import numpy as np
 from affine import Affine
 from rasterio.warp import Resampling, reproject
 
+from ..raster import inside_mask
+
 
 def reproject_merged_to_square_grid(
     merged_arr: np.ndarray,
@@ -49,28 +51,14 @@ def reproject_merged_to_square_grid(
         src_nodata=None,
         dst_nodata=np.nan,
     )
-    dst_arr[~inside_aoi(dst_arr.shape, dst_transform, aoi)] = np.nan
+    dst_arr[~inside_mask(dst_arr.shape, dst_transform, aoi)] = np.nan
     return dst_arr, dst_transform
 
 
-def inside_aoi(shape: tuple[int, int], transform: Affine, aoi: Any) -> np.ndarray:
-    """Boolean grid, True for cells whose centre lies inside `aoi.geometry`.
-
-    Raster grids cover the AOI's bounding box, but the AOI is a true-north
-    square that sits rotated by the grid convergence inside that box. Cells in
-    the corners belong to the neighbours, not the site, and must not enter an
-    area-based figure.
-    """
-    from rasterio.features import geometry_mask
-
-    return geometry_mask([aoi.geometry], out_shape=shape, transform=transform, invert=True)
-
-
-def elevation_summary(array: np.ndarray) -> dict[str, float | None]:
-    """min/max/mean over the valid (non-nan) pixels of a reprojected DEM window."""
-    valid = array[~np.isnan(array)]
+def elevation_summary(values: np.ndarray) -> dict[str, float | None]:
+    """min/max/mean of the valid elevations (1D, e.g. `SiteRaster.values_inside()`)."""
     return {
-        "min_elevation_m": float(valid.min()) if valid.size else None,
-        "max_elevation_m": float(valid.max()) if valid.size else None,
-        "mean_elevation_m": float(valid.mean()) if valid.size else None,
+        "min_elevation_m": float(values.min()) if values.size else None,
+        "max_elevation_m": float(values.max()) if values.size else None,
+        "mean_elevation_m": float(values.mean()) if values.size else None,
     }

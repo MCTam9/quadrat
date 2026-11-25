@@ -268,7 +268,7 @@ def _contours(terrain: LayerResult | None, square: AOI) -> tuple[Any, float | No
 
     from .export._contours import choose_contour_interval, terrain_contours
 
-    arr = np.asarray(terrain.raster["array"], dtype=float)
+    arr = terrain.raster.float_array()
     finite = arr[np.isfinite(arr)]
     if finite.size == 0:
         return None, None

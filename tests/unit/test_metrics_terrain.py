@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from affine import Affine
 
 from sce.aoi import AOI, NonMetricCRSError
 from sce.metrics.terrain import BUILDABLE_SLOPE_DEG, terrain_metrics
+from sce.raster import SiteRaster
 from sce.types import LayerResult
 
 EXPECTED_1_20_DEG = np.degrees(np.arctan(1.0 / 20.0))
@@ -21,15 +23,16 @@ def _aoi() -> AOI:
     return AOI.from_point(0.0, 51.0, 50.0, name="terrain")
 
 
-def _plane_raster(gradient_x: float, aoi_crs, n: int = 20, res: float = 1.0):
+def _plane_raster(gradient_x: float, aoi: AOI, n: int = 20, res: float = 1.0, crs=None):
     xs = np.arange(n) * res
     array = np.tile(xs * gradient_x, (n, 1))
-    return {"array": array, "crs": aoi_crs, "nodata": None, "res": (res, res)}
+    minx, _, _, maxy = aoi.bounds_metric
+    return SiteRaster.from_array(array, Affine(res, 0, minx, 0, -res, maxy), crs or aoi.crs, square=aoi)
 
 
 def test_flat_plane_has_zero_slope():
     aoi = _aoi()
-    raster = _plane_raster(0.0, aoi.crs)
+    raster = _plane_raster(0.0, aoi)
     layers = {"terrain": LayerResult(layer="terrain", provider="synthetic", raster=raster)}
     result = terrain_metrics(layers, aoi)
     assert result["slope_mean_deg"] == pytest.approx(0.0, abs=1e-9)
@@ -39,7 +42,7 @@ def test_flat_plane_has_zero_slope():
 
 def test_tilted_plane_at_exactly_1_in_20():
     aoi = _aoi()
-    raster = _plane_raster(1.0 / 20.0, aoi.crs)
+    raster = _plane_raster(1.0 / 20.0, aoi)
     layers = {"terrain": LayerResult(layer="terrain", provider="synthetic", raster=raster)}
     result = terrain_metrics(layers, aoi)
     assert result["slope_mean_deg"] == pytest.approx(EXPECTED_1_20_DEG, abs=1e-6)
@@ -50,7 +53,7 @@ def test_tilted_plane_at_exactly_1_in_20():
 
 def test_steep_plane_is_not_buildable():
     aoi = _aoi()
-    raster = _plane_raster(1.0 / 5.0, aoi.crs)
+    raster = _plane_raster(1.0 / 5.0, aoi)
     layers = {"terrain": LayerResult(layer="terrain", provider="synthetic", raster=raster)}
     result = terrain_metrics(layers, aoi)
     assert result["slope_mean_deg"] > BUILDABLE_SLOPE_DEG
@@ -59,7 +62,7 @@ def test_steep_plane_is_not_buildable():
 
 def test_elevation_summary_stats():
     aoi = _aoi()
-    raster = _plane_raster(1.0 / 20.0, aoi.crs, n=20, res=1.0)
+    raster = _plane_raster(1.0 / 20.0, aoi, n=20, res=1.0)
     layers = {"terrain": LayerResult(layer="terrain", provider="synthetic", raster=raster)}
     result = terrain_metrics(layers, aoi)
     assert result["elevation_min_m"] == pytest.approx(0.0)
@@ -68,7 +71,7 @@ def test_elevation_summary_stats():
 
 
 def test_geographic_crs_rejected():
-    raster = _plane_raster(0.0, "EPSG:4326")
+    raster = _plane_raster(0.0, _aoi(), crs="EPSG:4326")
     aoi = _aoi()
     layers = {"terrain": LayerResult(layer="terrain", provider="synthetic", raster=raster)}
     with pytest.raises(NonMetricCRSError):

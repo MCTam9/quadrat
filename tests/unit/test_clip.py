@@ -19,9 +19,9 @@ from shapely.geometry import LineString, Point, box
 
 import sce.providers  # noqa: F401  (registers providers)
 from sce.aoi import AOI
-from sce.clip import ClipOutsideError, _clip_raster, clip_layers, contains
+from sce.clip import ClipOutsideError, clip_layers, contains
 from sce.metrics.fabric import fabric_metrics
-from sce.providers._terrain_grid import inside_aoi
+from sce.raster import SiteRaster, inside_mask
 from sce.registry import REGISTRY
 from sce.types import LayerResult
 
@@ -63,7 +63,7 @@ def _centres(shape, t: Affine) -> tuple[np.ndarray, np.ndarray]:
 
 def _masked(arr: np.ndarray, t: Affine, aoi: AOI, fill) -> np.ndarray:
     out = arr.copy()
-    out[~inside_aoi(out.shape, t, aoi)] = fill
+    out[~inside_mask(out.shape, t, aoi)] = fill
     return out
 
 
@@ -149,19 +149,16 @@ def test_landcover_clip_matches_direct(outer, inner):
     lc = LayerResult(
         "landcover",
         "esa_worldcover",
-        raster={"array": classes(xs, ys, inner.geometry), "transform": t, "crs": outer.crs, "nodata": 0},
+        raster=SiteRaster.from_array(classes(xs, ys, inner.geometry), t, outer.crs, square=outer, nodata=0),
         data={"class_colours": {"x": "#000"}},
     )
     clipped = _clip_via(lc, outer, inner)
 
     it, ishape = _grid(inner, res_m)
     ixs, iys = _centres(ishape, it)
-    direct_raster = {
-        "array": _masked(classes(ixs, iys, inner.geometry), it, inner, 0),
-        "transform": it,
-        "crs": outer.crs,
-        "nodata": 0,
-    }
+    direct_raster = SiteRaster.from_array(
+        _masked(classes(ixs, iys, inner.geometry), it, inner, 0), it, outer.crs, square=inner, nodata=0
+    )
     direct = REGISTRY.provider("esa_worldcover").summarise(
         LayerResult("landcover", "esa_worldcover", raster=direct_raster, data=lc.data), inner
     )
@@ -182,11 +179,11 @@ def test_ghsl_clip_matches_direct(outer, inner):
     cx = outer.geometry.centroid.x
     arr = np.where(xs < cx, 12.0, np.nan).astype(np.float32)
     arr[xs < cx - 600] = 0.0  # covered, but zero height is not averaged
-    raster = {"array": _masked(arr, t, outer, np.nan), "transform": t, "crs": outer.crs}
+    raster = SiteRaster.from_array(_masked(arr, t, outer, np.nan), t, outer.crs, square=outer, nodata=np.nan)
     res = LayerResult("building_height", "ghsl_building_height", raster=raster)
     clipped = _clip_via(res, outer, inner)
     direct = REGISTRY.provider("ghsl_building_height").summarise(
-        replace(res, raster=_clip_raster(raster, inner)), inner
+        replace(res, raster=raster.window(inner)), inner
     )
     _assert_same(clipped, direct)
     assert clipped.data["mean_height_m"] == pytest.approx(12.0)
@@ -203,26 +200,19 @@ def test_lidar_ndsm_clip_uses_building_like_threshold_and_ignores_corners(outer,
     cx, cy = inner.geometry.centroid.x, inner.geometry.centroid.y
     arr = np.full(shape, 1.0, dtype=np.float32)  # finite ground, below the threshold
     arr[(xs > cx) & (ys > cy)] = 10.0  # one quadrant of buildings
-    raster = {
-        "array": _masked(arr, t, outer, np.nan),
-        "transform": t,
-        "crs": outer.crs,
-        "nodata": float("nan"),
-        "res": (res_m, res_m),
-        "kind": "ndsm",
-    }
+    raster = SiteRaster.from_array(
+        _masked(arr, t, outer, np.nan), t, outer.crs, square=outer, nodata=float("nan"), kind="ndsm"
+    )
     res = LayerResult("building_height", "ea_lidar_ndsm", raster=raster, data={"kind": "ndsm"})
     out = _clip_via(res, outer, inner)
-    assert out.raster["kind"] == "ndsm" and out.data["kind"] == "ndsm"
+    assert out.raster.kind == "ndsm" and out.data["kind"] == "ndsm"
     # Mean over cells > 2.5 m only; a mean over cells > 0 would sit well below 10.
     assert out.data["mean_height_m"] == pytest.approx(10.0)
     # Every cell inside the square is finite: masked bbox corners are not missing LiDAR.
-    assert np.isnan(out.raster["array"][0, 0])
+    assert np.isnan(out.raster.array[0, 0])
     assert out.coverage == pytest.approx(1.0)
     assert not out.degraded
-    direct = REGISTRY.provider("ea_lidar_ndsm").summarise(
-        replace(res, raster=_clip_raster(raster, inner)), inner
-    )
+    direct = REGISTRY.provider("ea_lidar_ndsm").summarise(replace(res, raster=raster.window(inner)), inner)
     _assert_same(out, direct)
     assert out.data["mean_height_m"] == pytest.approx(direct.data["mean_height_m"])
 
@@ -232,15 +222,15 @@ def test_terrain_clip_matches_direct(outer, inner):
     t, shape = _grid(outer, res_m)
     xs, _ = _centres(shape, t)
     arr = _masked(((xs - xs.min()) / 10.0).astype(np.float32), t, outer, np.nan)
-    raster = {"array": arr, "transform": t, "crs": outer.crs, "res": (res_m, res_m)}
+    raster = SiteRaster.from_array(arr, t, outer.crs, square=outer, nodata=np.nan)
     res = LayerResult(
         "terrain", "copernicus_terrain", raster=raster, data={"terrain_model": "DSM"}, coverage=1.0
     )
     clipped = _clip_via(res, outer, inner)
     direct = REGISTRY.provider("copernicus_terrain").summarise(
-        replace(res, raster=_clip_raster(raster, inner)), inner
+        replace(res, raster=raster.window(inner)), inner
     )
-    sub = clipped.raster["array"]
+    sub = clipped.raster.array
     assert clipped.data["terrain_model"] == "DSM"
     for key in ("min_elevation_m", "max_elevation_m", "mean_elevation_m"):
         assert clipped.data[key] == pytest.approx(direct.data[key])
@@ -270,11 +260,11 @@ def test_raster_windowed_to_inner_bounds(outer, inner):
         "terrain": LayerResult(
             "terrain",
             "copernicus_terrain",
-            raster={"array": arr, "transform": t, "crs": outer.crs, "res": (res, res)},
+            raster=SiteRaster.from_array(arr, t, outer.crs, square=outer, nodata=np.nan),
         )
     }
     out = clip_layers(layers, outer, inner)["terrain"]
-    sub = out.raster["array"]
+    sub = out.raster.array
     iminx, iminy, imaxx, imaxy = inner.bounds_metric
     # floor/ceil to whole cells: up to one extra cell at each edge.
     assert sub.shape[0] == pytest.approx((imaxy - iminy) / res, abs=2)
@@ -282,7 +272,7 @@ def test_raster_windowed_to_inner_bounds(outer, inner):
     # Corners of the window fall outside the rotated (true-north) square.
     assert np.isnan(sub[0, 0]) and np.isnan(sub[-1, -1])
     assert np.isfinite(sub[sub.shape[0] // 2, sub.shape[1] // 2])
-    ox_, oy_ = out.raster["transform"].c, out.raster["transform"].f
+    ox_, oy_ = out.raster.transform.c, out.raster.transform.f
     assert iminx - res <= ox_ <= iminx
     assert imaxy <= oy_ <= imaxy + res
     assert out.data["min_elevation_m"] == pytest.approx(float(np.nanmin(sub)))

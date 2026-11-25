@@ -43,19 +43,10 @@ def terrain_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     raster = terrain.raster
     if raster is None:
         raise ValueError("terrain_metrics requires layers['terrain'].raster")
-    assert_metric_crs(raster.get("crs"), where="terrain_metrics")
+    assert_metric_crs(raster.crs, where="terrain_metrics")
 
-    array = np.asarray(raster["array"], dtype=float)
-    nodata = raster.get("nodata")
-    if nodata is not None:
-        array = np.where(array == nodata, np.nan, array)
-
-    res = raster.get("res")
-    if res is not None:
-        dx, dy = float(res[0]), float(res[1])
-    else:
-        transform = raster["transform"]
-        dx, dy = abs(transform.a), abs(transform.e)
+    array = raster.float_array()
+    dx, dy = raster.res
 
     dzdy, dzdx = np.gradient(array, dy, dx)
     slope_rad = np.arctan(np.sqrt(dzdx**2 + dzdy**2))

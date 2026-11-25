@@ -69,7 +69,7 @@ def enrich_building_heights(
     raster = None if height is None else height.raster
     if (
         raster is None
-        or raster.get("kind") != "ndsm"
+        or raster.kind != "ndsm"
         or buildings is None
         or buildings.gdf is None
         or len(buildings.gdf) == 0
@@ -84,7 +84,7 @@ def enrich_building_heights(
     gdf["height_m"] = gdf["height_m"].astype(float)
     gdf["height_source"] = gdf["height_source"].astype(object)
 
-    array, transform = raster["array"], raster["transform"]
+    array, transform = raster.float_array(), raster.transform
     heights = gdf["height_m"].to_numpy(copy=True)
     sources = gdf["height_source"].to_numpy(copy=True)
     for i, geom in enumerate(gdf.geometry):

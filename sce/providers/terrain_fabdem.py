@@ -59,9 +59,10 @@ import numpy as np
 import rasterio
 from rasterio.merge import merge as rio_merge
 
+from ..raster import SiteRaster
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import elevation_summary, inside_aoi, reproject_merged_to_square_grid
+from ._terrain_grid import elevation_summary, reproject_merged_to_square_grid
 
 RESOLUTION_M = 30.0
 LICENCE = "CC BY-NC-SA 4.0 (Bristol/Fathom FABDEM v1.2)"
@@ -180,13 +181,13 @@ class FabdemTerrainProvider(Provider):
             LayerResult(
                 layer=self.layer,
                 provider=self.name,
-                raster={
-                    "array": dst_arr,
-                    "transform": dst_transform,
-                    "crs": aoi.crs,
-                    "nodata": float("nan"),
-                    "res": (RESOLUTION_M, RESOLUTION_M),
-                },
+                raster=SiteRaster.from_array(
+                    dst_arr,
+                    dst_transform,
+                    aoi.crs,
+                    square=aoi,
+                    nodata=float("nan"),
+                ),
                 data={
                     "terrain_model": "DTM",
                 },
@@ -200,9 +201,7 @@ class FabdemTerrainProvider(Provider):
 
     def summarise(self, result: LayerResult, aoi) -> LayerResult:
         """Elevation min/max/mean over the finite cells inside the square."""
-        arr = np.asarray(result.raster["array"], dtype=float)
-        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
-        data = {**(result.data or {}), **elevation_summary(np.where(inside, arr, np.nan))}
+        data = {**(result.data or {}), **elevation_summary(result.raster.values_inside())}
         return replace(result, data=data)
 
 

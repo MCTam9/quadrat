@@ -103,6 +103,7 @@ def _geographic_layers(required: tuple[str, ...]):
     import numpy as np
     from shapely.geometry import LineString, Polygon
 
+    from sce.raster import SiteRaster
     from sce.types import LayerResult
 
     shapes = {
@@ -117,13 +118,12 @@ def _geographic_layers(required: tuple[str, ...]):
             layers[layer] = LayerResult(
                 layer="terrain",
                 provider="test",
-                raster={
-                    "array": np.zeros((8, 8), dtype=float),
-                    "transform": Affine(0.0003, 0.0, 0.0, 0.0, -0.0003, 0.0),
-                    "crs": CRS.from_epsg(4326),
-                    "nodata": None,
-                    "res": (0.0003, 0.0003),
-                },
+                raster=SiteRaster.from_array(
+                    np.zeros((8, 8), dtype=float),
+                    Affine(0.0003, 0.0, 0.0, 0.0, -0.0003, 0.0),
+                    CRS.from_epsg(4326),
+                    square=AOI.from_point(3.0, 40.0, 1000.0, name="crs-contract"),
+                ),
             )
             continue
         if layer == "climate":
