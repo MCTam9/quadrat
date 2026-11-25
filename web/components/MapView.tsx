@@ -154,6 +154,8 @@ export default function MapView(props: Props) {
       style: BASEMAP[styleDark.current ? "dark" : "light"],
       center: [initial.lon, initial.lat],
       zoom: initial.zoom,
+      // Flat until 3D is on; then low enough to look along the street and up at the sun dome.
+      maxPitch: 0,
       attributionControl: { compact: true, customAttribution: "Photon" },
     });
     mapRef.current = map;
@@ -336,23 +338,28 @@ export default function MapView(props: Props) {
       const rect = box.getBoundingClientRect();
       const act = wheelAction(ev, recent, rect.height);
       if (act.kind === "pan") map.panBy([act.dx, act.dy], { animate: false });
+      else if (act.kind === "orbit") map.jumpTo({ bearing: map.getBearing() + act.dBearing, pitch: map.getPitch() + act.dPitch });
       else {
         const around = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
         map.zoomTo(map.getZoom() + act.dz, { around, animate: false });
       }
     };
     let gestureZoom = 0;
-    type Gesture = Event & { scale: number; clientX: number; clientY: number };
+    let gestureBearing = 0;
+    type Gesture = Event & { scale: number; rotation: number; clientX: number; clientY: number };
     const onGestureStart = (e: Event) => {
       e.preventDefault();
       gestureZoom = map.getZoom();
+      gestureBearing = map.getBearing();
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
       const g = e as Gesture;
       const rect = box.getBoundingClientRect();
       const around = map.unproject([g.clientX - rect.left, g.clientY - rect.top]);
+      // Safari also reports the two-finger twist: turn the map with it.
       map.zoomTo(gestureZoom + Math.log2(g.scale), { around, animate: false });
+      map.setBearing(gestureBearing - (g.rotation ?? 0));
     };
     box.addEventListener("wheel", onWheel, { passive: false });
     box.addEventListener("gesturestart", onGestureStart);
@@ -426,7 +433,14 @@ export default function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.easeTo({ pitch: props.threeD ? 55 : 0, duration: 600 });
+    if (props.threeD) {
+      map.setMaxPitch(85);
+      map.easeTo({ pitch: 55, duration: 600 });
+    } else {
+      // Ease down first, then lock the map flat so no gesture can tilt the 2D plan.
+      map.easeTo({ pitch: 0, duration: 600 });
+      map.once("moveend", () => !latest.current.threeD && map.setMaxPitch(0));
+    }
   }, [props.threeD]);
 
   useEffect(() => {

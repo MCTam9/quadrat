@@ -24,4 +24,7 @@ describe("wheelAction", () => {
     expect(looksLikeMouseWheel(ev({ deltaY: 3, deltaMode: 1 }))).toBe(true);
     expect(wheelAction(ev({ deltaY: 3, deltaMode: 1 }), false).kind).toBe("zoom");
   });
+  it("orbits with Option + two-finger scroll", () => {
+    expect(wheelAction(ev({ deltaX: 40, deltaY: -20, altKey: true }), true)).toEqual({ kind: "orbit", dBearing: 10, dPitch: 5 });
+  });
 });

@@ -4,10 +4,14 @@
  *  instead of panning. Here, as in Figma or Google Maps:
  *  - pinch (the browser reports it as a wheel event with ctrlKey) zooms around the pointer;
  *  - two-finger scroll pans;
- *  - a notched mouse wheel still zooms.
+ *  - a notched mouse wheel still zooms;
+ *  - Option (Alt) + two-finger scroll orbits: sideways turns the map, up and down tilts it.
  */
 
-export type WheelAction = { kind: "pan"; dx: number; dy: number } | { kind: "zoom"; dz: number };
+export type WheelAction =
+  | { kind: "pan"; dx: number; dy: number }
+  | { kind: "zoom"; dz: number }
+  | { kind: "orbit"; dBearing: number; dPitch: number };
 
 export interface WheelLike {
   deltaX: number;
@@ -15,6 +19,7 @@ export interface WheelLike {
   deltaMode: number;
   ctrlKey: boolean;
   metaKey?: boolean;
+  altKey?: boolean;
   /** Legacy, non-standard: multiples of 120 for a notched mouse wheel (Chrome, Safari). */
   wheelDeltaY?: number;
 }
@@ -37,6 +42,7 @@ export function wheelAction(e: WheelLike, trackpadRecent: boolean, pageHeight = 
   const unit = e.deltaMode === 1 ? LINE_PX : e.deltaMode === 2 ? pageHeight : 1;
   const dx = e.deltaX * unit;
   const dy = e.deltaY * unit;
+  if (e.altKey) return { kind: "orbit", dBearing: dx * 0.25, dPitch: -dy * 0.25 };
   if (e.ctrlKey || e.metaKey) return { kind: "zoom", dz: -dy / 100 }; // pinch, or cmd/ctrl + scroll
   if (!trackpadRecent && looksLikeMouseWheel(e)) return { kind: "zoom", dz: -dy / 450 };
   return { kind: "pan", dx, dy };

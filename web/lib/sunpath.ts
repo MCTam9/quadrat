@@ -13,7 +13,7 @@ export function projectSky(azimuthDeg: number, altitudeDeg: number, R: number): 
 }
 
 /** UTC instant for local *standard* time (offset hours east of UTC) on a calendar day. */
-function localStd(year: number, month: number, day: number, hour: number, offsetH: number): Date {
+export function localStd(year: number, month: number, day: number, hour: number, offsetH: number): Date {
   return new Date(Date.UTC(year, month, day, 0, 0, 0) + (hour - offsetH) * 3_600_000);
 }
 
