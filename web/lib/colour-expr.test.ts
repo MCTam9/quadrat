@@ -35,8 +35,31 @@ describe("missing-data hatch filters", () => {
     }
   });
 
-  it("No colour paints every building one neutral tone", async () => {
+  it("No colour paints every building in ink", async () => {
     const { buildingColour, NEUTRAL_BUILDING } = await import("./layers");
     expect(buildingColour("none")).toBe(NEUTRAL_BUILDING);
+    expect(NEUTRAL_BUILDING).toBe("#000000");
+  });
+});
+
+describe("constraint groups", () => {
+  it("groups the preview constraints by dataset", async () => {
+    const { constraintGroups } = await import("./layers");
+    const f = (dataset: string, name: string) => ({ type: "Feature", properties: { dataset, name }, geometry: { type: "Point", coordinates: [0, 0] } });
+    const g = constraintGroups({ type: "FeatureCollection", features: [f("conservation-area", "Soho"), f("conservation-area", "Soho"), f("listed-building", "No 10")] } as never);
+    expect(g).toEqual([
+      { dataset: "conservation-area", label: "Conservation area", count: 2, names: ["Soho"] },
+      { dataset: "listed-building", label: "Listed building", count: 1, names: ["No 10"] },
+    ]);
+  });
+});
+
+describe("dark palette", () => {
+  it("paints No colour in white on the dark sheet and every mode stays a valid expression", () => {
+    expect(buildingColour("none", true)).toBe("#ffffff");
+    for (const m of MODES) {
+      const res = spec.expression.createExpression(buildingColour(m.id, true), spec.latest.paint_fill["fill-color"] as never);
+      expect(res.result, m.id).toBe("success");
+    }
   });
 });

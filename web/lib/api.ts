@@ -117,7 +117,6 @@ export async function exportZip(
   signal?: AbortSignal,
 ): Promise<Blob> {
   const res = await post("/api/export", p, getToken, signal);
-  if (res.status === 409) throw new ReloadRequired();
   if (!res.ok) throw await errorFrom(res);
   return res.blob();
 }

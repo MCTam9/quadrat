@@ -4,162 +4,210 @@ import { useId, useState } from "react";
 import {
   CONSTRAINT_OTHER,
   CONSTRAINT_STYLES,
-  modeLegend,
   LANDUSE_COLOURS,
   LANDUSE_LABELS,
   MODES,
+  modeLegend,
   OVERLAYS,
+  palette,
+  sentenceCase,
+  RED_LINE,
   STREET_CLASSES,
   USE_SOURCE_LABELS,
-  type UseSource,
   type ColourMode,
   type LayerState,
   type Overlay,
+  type UseSource,
 } from "@/lib/layers";
+import { useDark } from "@/lib/theme";
 
-function Swatch({ color, hatch }: { color: string; hatch?: boolean }) {
+function Swatch({ color, hatch, line }: { color: string; hatch?: boolean; line?: boolean }) {
+  if (line) return <span className="h-0 w-3 shrink-0 border-t-2" style={{ borderColor: color }} aria-hidden />;
   return (
     <span
-      className="h-3 w-3 shrink-0 rounded-sm border border-black/10"
+      className="h-3 w-3 shrink-0 border border-rule"
       style={hatch ? { background: `repeating-linear-gradient(135deg, ${color} 0 1.5px, transparent 1.5px 4px)`, borderColor: color } : { background: color }}
+      aria-hidden
     />
   );
 }
 
-function LegendBlock({ title, items }: { title: string; items: { label: string; color: string; hatch?: boolean }[] }) {
+type Item = { label: string; color: string; hatch?: boolean; line?: boolean };
+
+function LegendBlock({ title, items }: { title: string; items: Item[] }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</div>
+      <div className="mb-1 text-xs font-semibold">{title}</div>
       <ul className="space-y-1 text-xs">
         {items.map((c) => (
-          <li key={c.label} className="flex items-center gap-2"><Swatch color={c.color} hatch={c.hatch} />{c.label}</li>
+          <li key={c.label} className="flex items-center gap-2">
+            <Swatch color={c.color} hatch={c.hatch} line={c.line} />
+            {c.label}
+          </li>
         ))}
       </ul>
     </div>
   );
 }
 
-/** Legend for the active colour mode and enabled overlays. */
-export function Legend({
+/** Legend for the active colour mode and enabled overlays: its own small card, bottom-left. */
+export function LegendCard({
   layers,
   hasBuildings,
+  hasContext,
   constraintDatasets,
   landuseClasses,
   useShares = [],
 }: {
   layers: LayerState;
   hasBuildings: boolean;
+  hasContext: boolean;
   constraintDatasets: string[];
   landuseClasses: string[];
   useShares?: { id: UseSource; share: number }[];
 }) {
+  const dark = useDark();
+  const pal = palette(dark);
+  const bodyId = useId();
+  // Phones start with the legend folded so it does not cover a third of the map. The legend
+  // only mounts after the preview loads, so it never renders on the server.
+  const [open, setOpen] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches);
   const blocks: React.ReactNode[] = [];
   if (hasBuildings) {
-    const ml = modeLegend(layers.mode);
+    const ml = modeLegend(layers.mode, dark);
     if (ml) blocks.push(<LegendBlock key="m" title={ml.title} items={ml.items} />);
-    if (layers.mode === "type") {
-      if (useShares.length)
-        blocks.push(
-          <p key="ms" className="text-[11px] leading-snug text-muted">
-            Type from {useShares.map((u) => `${USE_SOURCE_LABELS[u.id]} ${Math.round(u.share * 100)}%`).join(" · ")}.
-            Ground-floor businesses describe the ground floor only.
-          </p>,
-        );
+    else {
+      const items: Item[] = [{ label: "Site buildings", color: pal.ink }];
+      if (hasContext) items.push({ label: "Context buildings", color: pal.context });
+      blocks.push(<LegendBlock key="m" title="Buildings" items={items} />);
     }
+    if (layers.mode === "type" && useShares.length)
+      blocks.push(
+        <p key="ms" className="text-xs leading-snug text-graphite">
+          Type from {useShares.map((u) => `${USE_SOURCE_LABELS[u.id]} ${Math.round(u.share * 100)} %`).join(", ")}. Ground-floor businesses describe the ground floor only.
+        </p>,
+      );
   }
   if (layers.overlays.landuse && landuseClasses.length)
     blocks.push(<LegendBlock key="l" title="Land use" items={landuseClasses.map((c) => ({ label: LANDUSE_LABELS[c] ?? c, color: LANDUSE_COLOURS[c] ?? LANDUSE_COLOURS.other }))} />);
-  if (layers.overlays.streets) blocks.push(<LegendBlock key="s" title="Streets" items={STREET_CLASSES} />);
-  if (layers.overlays.constraints) {
-    const sets = constraintDatasets.length ? constraintDatasets : [];
+  if (layers.overlays.streets)
+    blocks.push(<LegendBlock key="s" title="Streets" items={STREET_CLASSES.map((c) => ({ label: c.label, color: dark ? c.colorDark : c.color, line: true }))} />);
+  if (layers.overlays.constraints)
     blocks.push(
-      sets.length ? (
-        <LegendBlock key="c" title="Planning constraints" items={sets.map((d) => { const st = CONSTRAINT_STYLES[d] ?? CONSTRAINT_OTHER; return { label: CONSTRAINT_STYLES[d] ? st.label : d, color: st.color, hatch: true }; })} />
+      constraintDatasets.length ? (
+        <LegendBlock
+          key="c"
+          title="Planning constraints"
+          items={constraintDatasets.map((d) => {
+            const st = CONSTRAINT_STYLES[d] ?? CONSTRAINT_OTHER;
+            return { label: CONSTRAINT_STYLES[d] ? st.label : sentenceCase(d), color: dark ? st.colorDark : st.color, hatch: true };
+          })}
+        />
       ) : (
-        <p key="c" className="text-[11px] text-muted">No planning constraints here (data covers Great Britain only).</p>
+        <p key="c" className="text-xs text-graphite">No planning constraints here (data covers Great Britain only).</p>
       ),
     );
-  }
-  if (!blocks.length) return null;
-  return <div className="space-y-2.5">{blocks}</div>;
+  blocks.push(<LegendBlock key="site" title="Site" items={[{ label: "Site boundary", color: RED_LINE, line: true }]} />);
+  return (
+    <section className="sheet pointer-events-auto w-56" aria-label="Legend">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold sm:hidden"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Legend <Chevron open={open} />
+      </button>
+      <div id={bodyId} className={`${open ? "block" : "hidden"} max-h-[32dvh] space-y-2.5 overflow-y-auto p-3 pt-0 sm:block sm:pt-3`}>
+        {blocks}
+      </div>
+    </section>
+  );
 }
 
+const Chevron = ({ open }: { open: boolean }) => (
+  <svg className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+    <path d="M2 4.5 6 8.5 10 4.5" />
+  </svg>
+);
+
+/** 2D/3D and the layers menu in one compact row. The menu scrolls inside its own max height. */
 export function LayersControl({
   layers,
   onChange,
-  legend,
+  threeD,
+  onThreeD,
 }: {
   layers: LayerState;
   onChange: (l: LayerState) => void;
-  legend: React.ReactNode;
+  threeD: boolean;
+  onThreeD: (v: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const uid = useId();
+  const panelId = `${uid}-layers`;
   const setMode = (mode: ColourMode) => onChange({ ...layers, mode });
   const toggle = (o: Overlay) => onChange({ ...layers, overlays: { ...layers.overlays, [o]: !layers.overlays[o] } });
   const active = OVERLAYS.filter((o) => layers.overlays[o.id]).length;
-
-  // The desktop panel and the mobile sheet both render this body. Radios need a
-  // distinct group name per copy: one name across both lets the hidden copy hold
-  // the checked state, so the visible radios look unselected.
-  const uid = useId();
-  const body = (copy: "desktop" | "mobile") => (
-    <div className="space-y-3 text-xs">
-      <fieldset>
-        <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">Colour buildings by</legend>
-        <div className="space-y-0.5">
-          {MODES.map((m) => (
-            <label key={m.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-track">
-              <input type="radio" name={`colour-mode-${uid}-${copy}`} className="accent-[var(--accent)]" checked={layers.mode === m.id} onChange={() => setMode(m.id)} />
-              {m.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">Overlays</legend>
-        <div className="space-y-0.5">
-          {OVERLAYS.map((o) => (
-            <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-track">
-              <input type="checkbox" className="accent-[var(--accent)]" checked={layers.overlays[o.id]} onChange={() => toggle(o.id)} />
-              {o.label}
-              <span className="ml-auto text-[10px] text-muted">{o.hint}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-    </div>
-  );
+  const modeLabel = MODES.find((m) => m.id === layers.mode)?.label ?? "";
 
   return (
-    <>
-      {/* desktop: inline glass panel */}
-      <div className="pointer-events-auto glass hidden rounded-xl sm:block">
-        <button className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          <span aria-hidden>▦</span> Layers
-          {active > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-fg">{active}</span>}
-          <span className="ml-auto" aria-hidden>{open ? "▾" : "▸"}</span>
+    <div className="pointer-events-auto">
+      <div className="flex items-stretch gap-2">
+        <div className="sheet flex" role="group" aria-label="View mode">
+          {[false, true].map((v) => (
+            <button
+              key={String(v)}
+              aria-pressed={threeD === v}
+              onClick={() => onThreeD(v)}
+              className={`px-3 py-2 text-xs font-semibold ${threeD === v ? "bg-ink text-sheet" : "hover:bg-hover"}`}
+            >
+              {v ? "3D" : "2D"}
+            </button>
+          ))}
+        </div>
+        <button
+          className="sheet flex flex-1 items-center gap-2 px-3 py-2 text-left text-xs font-semibold hover:bg-hover"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((o) => !o)}
+        >
+          Layers
+          <span className="truncate font-normal text-graphite">
+            {modeLabel}
+            {active > 0 ? `, ${active} on` : ""}
+          </span>
+          <span className="ml-auto"><Chevron open={open} /></span>
         </button>
-        {open && <div className="border-t border-line px-3 pb-3 pt-2">{body("desktop")}</div>}
-        {!!legend && <div className="border-t border-line px-3 py-2.5 empty:hidden">{legend}</div>}
       </div>
-
-      {/* mobile: button + bottom sheet */}
-      <div className="pointer-events-auto sm:hidden">
-        <button className="glass flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold" aria-expanded={open} onClick={() => setOpen(true)}>
-          <span aria-hidden>▦</span> Layers
-          {active > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-fg">{active}</span>}
-        </button>
-        {open && (
-          <div className="glass fixed inset-x-0 bottom-0 z-30 max-h-[70vh] overflow-y-auto rounded-t-2xl p-4" role="dialog" aria-label="Map layers">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Layers</h2>
-              <button className="rounded-lg px-2 py-1 text-xs hover:bg-track" onClick={() => setOpen(false)}>Done</button>
+      {open && (
+        <div id={panelId} className="sheet mt-2 max-h-[min(44dvh,24rem)] space-y-3 overflow-y-auto p-3 text-xs">
+          <fieldset>
+            <legend className="mb-1 font-semibold">Colour buildings by</legend>
+            <div className="space-y-0.5">
+              {MODES.map((m) => (
+                <label key={m.id} className="flex cursor-pointer items-center gap-2 px-1 py-1.5 hover:bg-hover">
+                  <input type="radio" name={`${uid}-mode`} checked={layers.mode === m.id} onChange={() => setMode(m.id)} />
+                  {m.label}
+                </label>
+              ))}
             </div>
-            {body("mobile")}
-            {!!legend && <div className="mt-3 border-t border-line pt-3 empty:hidden">{legend}</div>}
-          </div>
-        )}
-      </div>
-    </>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-1 font-semibold">Overlays</legend>
+            <div className="space-y-0.5">
+              {OVERLAYS.map((o) => (
+                <label key={o.id} className="flex cursor-pointer items-center gap-2 px-1 py-1.5 hover:bg-hover">
+                  <input type="checkbox" checked={layers.overlays[o.id]} onChange={() => toggle(o.id)} />
+                  {o.label}
+                  <span className="ml-auto text-graphite">{o.hint}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      )}
+    </div>
   );
 }

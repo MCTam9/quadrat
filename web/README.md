@@ -50,10 +50,12 @@ In production, serve the Python API on the same origin under `/api` (no rewrite 
 
 ## Notes
 
-- Backend `height_source` values: `height` (measured), `levels` (storeys x 3 m), empty (unknown); any other non-empty
-  value is shown as "estimated".
+- Backend `height_source` values: `height` (tag), `lidar`, `levels` (storeys x 3 m), `unknown`. Vocabulary (land use, building use,
+  height source) comes from `lib/vocab.generated.ts`, generated from `sce/vocab.py`; never edit it.
 - Export format ids sent to the API: `dxf`, `3dm`, `svg`, `geojson`, `glb`, `obj`, `gpkg`, `epw`.
-- The basemap stays light in dark mode; panels follow `prefers-color-scheme`.
+- The design is a drawing sheet: white, black ink, one red line for the site. Dark mode is the blueprint (`#12304F`, white ink);
+  the basemap (OpenFreeMap positron or dark, retinted) and the panel both follow `prefers-color-scheme` live.
+- The preview's `context` buildings (a ring outside the square) are drawn as pale massing; without them the map still works.
 
 ## Deploy (free: Vercel Hobby + Clerk free)
 

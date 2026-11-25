@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { COMPASS16, WIND_BIN_LABELS, WIND_COLOURS, type WindRose } from "@/lib/climate";
 import { hourCurve, pathD, projectSky, SUN_DAYS, sunArc } from "@/lib/sunpath";
 
-export const SUN_COLOURS: Record<string, string> = { jun: "#d97706", equ: "#7c6fb0", dec: "#2563eb" };
+export const SUN_COLOURS: Record<string, string> = { jun: "var(--sun-jun)", equ: "var(--sun-equ)", dec: "var(--sun-dec)" };
 const HALO = { paintOrder: "stroke", strokeLinejoin: "round" } as const;
 
 interface Ink {
@@ -67,7 +67,7 @@ export function SunPathLayer({
           const noon = a.hours.find((h) => h.hour === 12);
           if (!noon) return null;
           return (
-            <text key={a.id} x={noon.pt.x} y={noon.pt.y + (a.id === "dec" ? fs(-8) : fs(14))} fontSize={fs(10)} textAnchor="middle" fill={SUN_COLOURS[a.id]} stroke={ink.halo} strokeWidth={fs(3)} style={HALO}>
+            <text key={a.id} x={noon.pt.x} y={noon.pt.y + (a.id === "dec" ? fs(-8) : fs(14))} fontSize={fs(11)} textAnchor="middle" fill={SUN_COLOURS[a.id]} stroke={ink.halo} strokeWidth={fs(3)} style={HALO}>
               {a.label}
             </text>
           );
@@ -108,10 +108,15 @@ export function WindRoseLayer({
   scale = 1,
   labels = true,
   ink,
+  inner = 0,
+  petalOpacity = 1,
 }: {
   rose: WindRose;
   scale?: number;
   labels?: boolean;
+  /** Radius (in the 100-unit disc) where petals start; 0 for a standalone rose, more for an outer ring. */
+  inner?: number;
+  petalOpacity?: number;
 } & { ink: Ink }) {
   const R = 100;
   const fs = (px: number) => px / scale;
@@ -120,7 +125,7 @@ export function WindRoseLayer({
   // round the axis max up to a "nice" step so rings read as whole percentages
   const step = maxShare > 0.2 ? 0.1 : maxShare > 0.1 ? 0.05 : 0.02;
   const axis = Math.ceil(maxShare / step) * step;
-  const rad = (share: number) => (share / axis) * R;
+  const rad = (share: number) => inner + (share / axis) * (R - inner);
   const pt = (angDeg: number, r: number) => {
     const a = (angDeg * Math.PI) / 180;
     return [r * Math.sin(a), -r * Math.cos(a)] as const;
@@ -141,20 +146,22 @@ export function WindRoseLayer({
         <g key={v}>
           <circle r={rad(v)} fill="none" stroke={ink.grid} strokeWidth={0.75} strokeDasharray={i === rings.length - 1 ? undefined : "2 3"} vectorEffect="non-scaling-stroke" />
           {labels && (
-            <text x={2} y={-rad(v) - fs(1.5)} fontSize={fs(8.5)} fill={ink.ink} opacity={0.75} stroke={ink.halo} strokeWidth={fs(2.5)} style={HALO}>
+            <text x={fs(3)} y={-rad(v) - fs(2)} fontSize={fs(11)} fill={ink.ink} opacity={0.8} stroke={ink.halo} strokeWidth={fs(2.5)} style={HALO}>
               {Math.round(v * 100)}%
             </text>
           )}
         </g>
       ))}
-      {[0, 45, 90, 135].map((a) => {
-        const [x, y] = pt(a, R);
-        return <line key={a} x1={-x} y1={-y} x2={x} y2={y} stroke={ink.grid} strokeWidth={0.75} vectorEffect="non-scaling-stroke" />;
+      {inner > 0 && <circle r={inner} fill="none" stroke={ink.grid} strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+        const [x0, y0] = pt(a, inner);
+        const [x1, y1] = pt(a, R);
+        return <line key={a} x1={x0} y1={y0} x2={x1} y2={y1} stroke={ink.grid} strokeWidth={0.75} vectorEffect="non-scaling-stroke" />;
       })}
       {rose.share.map((bins, d) => {
         let acc = 0;
         return (
-          <g key={d}>
+          <g key={d} opacity={petalOpacity}>
             {bins.map((v, b) => {
               if (v <= 0) return null;
               const r0 = rad(acc);
@@ -182,28 +189,31 @@ export function WindRoseLayer({
   );
 }
 
-export const PANEL_INK: Ink = { ink: "var(--fg)", halo: "var(--surface, #fff)", grid: "var(--line)" };
-export const MAP_INK: Ink = { ink: "#1f2937", halo: "#ffffff", grid: "rgba(31,41,55,0.28)" };
+export const PANEL_INK: Ink = { ink: "var(--ink)", halo: "var(--sheet)", grid: "var(--rule)" };
+/** The map is a white sheet or a dark sheet; the overlay ink follows it. */
+export const mapInk = (dark: boolean): Ink =>
+  dark ? { ink: "#ffffff", halo: "#161616", grid: "rgba(255,255,255,0.4)" } : { ink: "#000000", halo: "#ffffff", grid: "rgba(0,0,0,0.3)" };
 
 export function WindLegend() {
   return (
-    <ul className="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-muted" aria-label="Wind speed bins in metres per second">
+    <ul className="flex flex-nowrap items-center gap-x-2 text-[11px] text-graphite nums" aria-label="Wind speed bins in metres per second">
       {WIND_BIN_LABELS.map((l, i) => (
-        <li key={l} className="flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: WIND_COLOURS[i] }} />
-          {l} m/s
+        <li key={l} className="flex items-center gap-1 whitespace-nowrap">
+          <span className="h-2.5 w-2.5 border border-rule" style={{ background: WIND_COLOURS[i] }} />
+          {l}
         </li>
       ))}
+      <li className="whitespace-nowrap">m/s</li>
     </ul>
   );
 }
 
 export function SunLegend() {
   return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted" aria-label="Sun path legend">
+    <ul className="flex flex-nowrap gap-x-3 text-[11px] text-graphite nums" aria-label="Sun path legend">
       {SUN_DAYS.map((d) => (
-        <li key={d.id} className="flex items-center gap-1">
-          <span className="h-0.5 w-4 rounded" style={{ background: SUN_COLOURS[d.id] }} />
+        <li key={d.id} className="flex items-center gap-1 whitespace-nowrap">
+          <span className="h-0.5 w-4" style={{ background: SUN_COLOURS[d.id] }} />
           {d.label}
         </li>
       ))}
@@ -213,7 +223,7 @@ export function SunLegend() {
 
 /** Standalone responsive SVGs for the climate panel. */
 export function SunPathChart({ lat, lon, offsetH, nowSun }: { lat: number; lon: number; offsetH: number; nowSun: { azimuth: number; altitude: number } | null }) {
-  const k = 1.4; // rough on-screen scale for text sizing (viewBox 280 wide / 200 units)
+  const k = 1.15; // on-screen scale: 300 px wide over a 260-unit viewBox, so 11 units of text is 11 px
   return (
     <svg viewBox="-130 -125 260 250" className="mx-auto block w-full max-w-[300px]" role="img" aria-label="Sun path diagram: stereographic projection with solstice and equinox arcs, north at top">
       <title>Sun path (stereographic), arcs for 21 Jun, equinox and 21 Dec; dots mark whole hours of local standard time</title>
@@ -226,7 +236,7 @@ export function WindRoseChart({ rose }: { rose: WindRose }) {
   return (
     <svg viewBox="-130 -125 260 250" className="mx-auto block w-full max-w-[300px]" role="img" aria-label="Wind rose: share of hours by direction the wind comes from and speed">
       <title>Wind rose</title>
-      <WindRoseLayer rose={rose} scale={1.4} ink={PANEL_INK} />
+      <WindRoseLayer rose={rose} scale={1.15} ink={PANEL_INK} />
     </svg>
   );
 }

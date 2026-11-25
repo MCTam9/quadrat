@@ -48,7 +48,7 @@ describe("building type", () => {
       features: [{ type: "Feature", geometry: { type: "Point", coordinates: [0, 0] }, properties: { height_m: 9, height_source: "levels", building: "house" } }],
     };
     const p = annotateBuildings(fc).features[0].properties!;
-    expect(p).toMatchObject({ btype: "residential", hcat: "storeys", h: 9 });
+    expect(p).toMatchObject({ btype: "residential", hcat: "levels", h: 9 });
     expect(annotateBuildings({ type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [0, 0] }, properties: null }] }).features[0].properties).toMatchObject({ btype: "unspecified", h: 0 });
   });
   it("heightBin", () => {
@@ -63,7 +63,7 @@ describe("layer persistence + contours", () => {
   it("parses defensively", () => {
     expect(parseLayers("{bad")).toEqual(DEFAULT_LAYERS);
     expect(parseLayers(JSON.stringify({ mode: "type", overlays: { sun: true, nope: true } }))).toMatchObject({ mode: "type", overlays: { sun: true, wind: false } });
-    expect(parseLayers(JSON.stringify({ mode: "zzz" })).mode).toBe("source");
+    expect(parseLayers(JSON.stringify({ mode: "zzz" })).mode).toBe("none");
   });
   it("flags major contours every 5th interval", () => {
     const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [10, 12, 20].map((e) => ({ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [[0, 0], [1, 1]] }, properties: { elevation_m: e } })) };

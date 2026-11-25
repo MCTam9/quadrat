@@ -1,4 +1,5 @@
 import { classifySource, HEIGHT_CATEGORIES } from "./buildings";
+import { BUILDING_TAG_USE, BUILDING_USE, LANDUSE, type BuildingUseId } from "./vocab.generated";
 
 export type ColourMode = "source" | "height" | "type" | "none";
 export type Overlay = "landuse" | "streets" | "contours" | "constraints" | "sun" | "wind";
@@ -9,7 +10,7 @@ export interface LayerState {
 }
 
 export const DEFAULT_LAYERS: LayerState = {
-  mode: "source",
+  mode: "none",
   overlays: { landuse: false, streets: false, contours: false, constraints: false, sun: false, wind: false },
 };
 
@@ -23,13 +24,14 @@ export const OVERLAYS: { id: Overlay; label: string; hint: string }[] = [
 ];
 
 export const MODES: { id: ColourMode; label: string }[] = [
+  { id: "none", label: "No colour" },
   { id: "source", label: "Height source" },
   { id: "height", label: "Height" },
   { id: "type", label: "Building type" },
-  { id: "none", label: "No colour" },
 ];
 
-const KEY = "sce.layers";
+// v2: the default colour mode changed to "No colour".
+const KEY = "sce.layers.v2";
 
 /** Parse a stored value defensively; anything unexpected falls back to defaults. */
 export function parseLayers(raw: string | null): LayerState {
@@ -59,14 +61,58 @@ export function saveLayers(s: LayerState) {
   }
 }
 
-// ---- building height ramp (sequential, one hue) ----
-export const UNKNOWN_GREY = "#aeb4be";
+// ---- map palette: the white sheet and the dark sheet ----
+export const BASEMAP = {
+  light: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+} as const;
+export const RED_LINE = "#e0261b";
+/** Dark sheet: neutral charcoal, so the only colour on the map is data and the red line. */
+export const BLUEPRINT = "#161616";
+
+export interface MapPalette {
+  /** "No colour": site buildings as solid ink. */
+  ink: string;
+  /** Context massing outside the square: pale graphite. */
+  context: string;
+  /** Building outline and text halo, the sheet colour. */
+  halo: string;
+  outline: string;
+  streets: string;
+  contour: string;
+  contourLabel: string;
+  heightRamp: string[];
+}
+export const PALETTE: Record<"light" | "dark", MapPalette> = {
+  light: {
+    ink: "#000000",
+    context: "#c3c5bf",
+    halo: "#ffffff",
+    outline: "#ffffff",
+    streets: "#6b7069",
+    contour: "#92400e",
+    contourLabel: "#78350f",
+    heightRamp: ["#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"],
+  },
+  dark: {
+    ink: "#ffffff",
+    context: "#5c5c5c",
+    halo: BLUEPRINT,
+    outline: "rgba(255,255,255,0.45)",
+    streets: "#a3a3a3",
+    contour: "#e0b48a",
+    contourLabel: "#f1d3b0",
+    heightRamp: ["#35577a", "#4f7ba6", "#6f9fcb", "#93bee3", "#bddbf2", "#e4f1fb", "#ffffff"],
+  },
+};
+export const palette = (dark: boolean) => PALETTE[dark ? "dark" : "light"];
+
 /** Missing data is loud on purpose: rose fill with a crimson hatch, never a quiet grey
  *  that reads as "a building with a dull value". */
 export const MISSING_FILL = "#fecdd3";
 export const MISSING_LINE = "#e11d48";
-/** "No colour" mode: one neutral tone so the massing reads on its own. */
-export const NEUTRAL_BUILDING = "#c9ccd1";
+/** "No colour" mode paints site buildings in ink: black on the sheet, white on the dark sheet. */
+export const NEUTRAL_BUILDING = PALETTE.light.ink;
 
 /** Buildings whose attribute for this colour mode is missing (drawn hatched). */
 export function missingFilter(mode: ColourMode): unknown[] {
@@ -80,7 +126,7 @@ export function missingFilter(mode: ColourMode): unknown[] {
 export type LegendItem = { label: string; color: string; hatch?: boolean };
 const MISSING_ITEM = (label: string): LegendItem => ({ label, color: MISSING_LINE, hatch: true });
 export const HEIGHT_BREAKS = [3, 6, 10, 15, 25, 40]; // metres; bins: <3, 3-6, ... 40+
-export const HEIGHT_COLOURS = ["#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"];
+export const HEIGHT_COLOURS = PALETTE.light.heightRamp;
 
 export function heightBin(h: number | null | undefined): number {
   if (typeof h !== "number" || !Number.isFinite(h) || h <= 0) return -1;
@@ -88,96 +134,70 @@ export function heightBin(h: number | null | undefined): number {
   while (i < HEIGHT_BREAKS.length && h >= HEIGHT_BREAKS[i]) i++;
   return i;
 }
-export function heightLegend(): { label: string; color: string }[] {
-  const out = HEIGHT_COLOURS.map((color, i) => ({
+export function heightLegend(dark = false): LegendItem[] {
+  const ramp = palette(dark).heightRamp;
+  const out = ramp.map((color, i) => ({
     color,
     label: i === 0 ? `< ${HEIGHT_BREAKS[0]} m` : i === HEIGHT_BREAKS.length ? `${HEIGHT_BREAKS[i - 1]} m +` : `${HEIGHT_BREAKS[i - 1]} to ${HEIGHT_BREAKS[i]} m`,
   }));
   return [...out, MISSING_ITEM("No height data")];
 }
 
-// ---- building type ----
-export type BuildingType = "residential" | "commercial" | "retail" | "industrial" | "civic" | "other" | "unspecified";
+// ---- building type: the vocabulary's building-use classes, plus "unspecified" for no evidence ----
+export type BuildingType = BuildingUseId | "unspecified";
 
 export const BUILDING_TYPES: { id: BuildingType; label: string; color: string }[] = [
-  { id: "residential", label: "Residential", color: "#0072b2" },
-  { id: "commercial", label: "Commercial / office", color: "#e69f00" },
-  { id: "retail", label: "Retail", color: "#cc79a7" },
-  { id: "industrial", label: "Industrial", color: "#d55e00" },
-  { id: "civic", label: "Civic / education / religious", color: "#009e73" },
-  { id: "other", label: "Other", color: "#56b4e9" },
+  ...BUILDING_USE.map((u) => ({ id: u.id as BuildingType, label: u.label, color: u.colour })),
   { id: "unspecified", label: "No type data (no tag or evidence)", color: MISSING_FILL },
 ];
-
-const TYPE_MAP: Record<string, BuildingType> = {};
-function reg(t: BuildingType, tags: string) {
-  for (const k of tags.split(" ")) TYPE_MAP[k] = t;
-}
-reg("residential", "residential house detached semidetached_house terrace terraced_house apartments flats bungalow dormitory houseboat static_caravan cabin farm");
-reg("commercial", "commercial office offices hotel bank");
-reg("retail", "retail supermarket kiosk shop mall");
-reg("industrial", "industrial warehouse factory manufacture service storage_tank");
-reg("civic", "civic public government school university college kindergarten hospital church chapel cathedral mosque synagogue temple religious monastery fire_station train_station transportation museum library theatre sports_hall");
 
 export function classifyBuilding(tag: unknown): BuildingType {
   const t = typeof tag === "string" ? tag.trim().toLowerCase() : "";
   if (!t || t === "yes") return "unspecified";
-  return TYPE_MAP[t] ?? "other";
+  return BUILDING_TAG_USE[t] ?? "other";
 }
 
 // ---- MapLibre colour expressions ----
-export function buildingColour(mode: ColourMode): unknown[] | string {
-  if (mode === "none") return NEUTRAL_BUILDING;
+export function buildingColour(mode: ColourMode, dark = false): unknown[] | string {
+  const pal = palette(dark);
+  if (mode === "none") return pal.ink;
   if (mode === "height") {
-    const e: unknown[] = ["case", ["<=", ["get", "h"], 0], MISSING_FILL, ["step", ["get", "h"], HEIGHT_COLOURS[0]]];
+    const e: unknown[] = ["case", ["<=", ["get", "h"], 0], MISSING_FILL, ["step", ["get", "h"], pal.heightRamp[0]]];
     const step = e[3] as unknown[];
-    HEIGHT_BREAKS.forEach((b, i) => step.push(b, HEIGHT_COLOURS[i + 1]));
+    HEIGHT_BREAKS.forEach((b, i) => step.push(b, pal.heightRamp[i + 1]));
     return e;
   }
-  const [prop, items, fallback] =
-    mode === "type"
-      ? (["btype", BUILDING_TYPES, MISSING_FILL] as const)
-      : (["hcat", HEIGHT_CATEGORIES, MISSING_FILL] as const);
+  const [prop, items] =
+    mode === "type" ? (["btype", BUILDING_TYPES] as const) : (["hcat", HEIGHT_CATEGORIES.map((c) => ({ id: c.id, color: c.colour }))] as const);
   const e: unknown[] = ["match", ["get", prop]];
   for (const c of items) e.push(c.id, c.id === "unknown" || c.id === "unspecified" ? MISSING_FILL : c.color);
-  e.push(fallback);
+  e.push(MISSING_FILL);
   return e;
 }
 
 // ---- overlays ----
-export const LANDUSE_COLOURS: Record<string, string> = {
-  residential: "#f0b98d",
-  commercial: "#e58fb0",
-  industrial: "#a8a29e",
-  civic: "#a78bfa",
-  green_space: "#7fc98a",
-  agriculture: "#d8d27c",
-  water: "#6fb1e4",
-  transport: "#8b9bb0",
-  other: "#cbd5e1",
-};
-export const LANDUSE_LABELS: Record<string, string> = {
-  residential: "Residential", commercial: "Commercial", industrial: "Industrial", civic: "Civic", green_space: "Green space",
-  agriculture: "Agriculture", water: "Water", transport: "Transport", other: "Other",
-};
+export const LANDUSE_COLOURS: Record<string, string> = Object.fromEntries(LANDUSE.map((l) => [l.id, l.colour]));
+export const LANDUSE_LABELS: Record<string, string> = Object.fromEntries(LANDUSE.map((l) => [l.id, l.label]));
 
-export const STREET_CLASSES: { id: string; label: string; color: string; width: number; match: string[] }[] = [
-  { id: "major", label: "Motorway / trunk / primary", color: "#c2410c", width: 3, match: ["motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"] },
-  { id: "secondary", label: "Secondary / tertiary", color: "#d97706", width: 2.2, match: ["secondary", "secondary_link", "tertiary", "tertiary_link"] },
-  { id: "local", label: "Residential / service", color: "#475569", width: 1.4, match: ["residential", "unclassified", "living_street", "service"] },
-  { id: "active", label: "Footway / cycleway / path", color: "#15803d", width: 1.2, match: ["footway", "pedestrian", "path", "cycleway", "steps", "track", "bridleway"] },
+export const STREET_CLASSES: { id: string; label: string; color: string; colorDark: string; width: number; match: string[] }[] = [
+  { id: "major", label: "Motorway, trunk and primary", color: "#c2410c", colorDark: "#fb923c", width: 3, match: ["motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"] },
+  { id: "secondary", label: "Secondary and tertiary", color: "#d97706", colorDark: "#fbbf24", width: 2.2, match: ["secondary", "secondary_link", "tertiary", "tertiary_link"] },
+  { id: "local", label: "Residential and service", color: "#475569", colorDark: "#b6c6d8", width: 1.4, match: ["residential", "unclassified", "living_street", "service"] },
+  { id: "active", label: "Footway, cycleway and path", color: "#15803d", colorDark: "#4ade80", width: 1.2, match: ["footway", "pedestrian", "path", "cycleway", "steps", "track", "bridleway"] },
 ];
 export function streetClass(hw: unknown): string {
   const h = typeof hw === "string" ? hw : "";
   return STREET_CLASSES.find((c) => c.match.includes(h))?.id ?? "local";
 }
 
-export const CONSTRAINT_STYLES: Record<string, { label: string; color: string }> = {
-  "conservation-area": { label: "Conservation area", color: "#15803d" },
-  "listed-building": { label: "Listed building", color: "#9a3412" },
-  "flood-risk-zone": { label: "Flood risk zone", color: "#1d4ed8" },
+export const CONSTRAINT_STYLES: Record<string, { label: string; color: string; colorDark: string }> = {
+  "conservation-area": { label: "Conservation area", color: "#15803d", colorDark: "#4ade80" },
+  "listed-building": { label: "Listed building", color: "#9a3412", colorDark: "#fb923c" },
+  "flood-risk-zone": { label: "Flood risk zone", color: "#1d4ed8", colorDark: "#7dd3fc" },
+  "listed-building-outline": { label: "Listed building outline", color: "#9a3412", colorDark: "#fb923c" },
+  "article-4-direction-area": { label: "Article 4 direction area", color: "#a16207", colorDark: "#facc15" },
 };
-export const CONSTRAINT_OTHER = { label: "Other constraint", color: "#7e22ce" };
+export const CONSTRAINT_OTHER = { label: "Other constraint", color: "#7e22ce", colorDark: "#d8b4fe" };
 export function constraintStyle(ds: unknown) {
   return CONSTRAINT_STYLES[String(ds)] ?? CONSTRAINT_OTHER;
 }
@@ -214,16 +234,16 @@ export function annotateConstraints(fc?: GeoJSON.FeatureCollection | null): GeoJ
   };
 }
 
-const USE_IDS = new Set<string>(["residential", "commercial", "retail", "industrial", "civic", "other"]);
+const USE_IDS = new Set<string>(BUILDING_USE.map((u) => u.id));
 
 /** Legend rows for a colour mode, with the missing-data row shown hatched. */
-export function modeLegend(mode: ColourMode): { title: string; items: LegendItem[] } | null {
+export function modeLegend(mode: ColourMode, dark = false): { title: string; items: LegendItem[] } | null {
   if (mode === "source")
     return {
       title: "Building height source",
-      items: HEIGHT_CATEGORIES.map((c) => (c.id === "unknown" ? MISSING_ITEM("No height data (drawn flat)") : c)),
+      items: HEIGHT_CATEGORIES.map((c) => (c.id === "unknown" ? MISSING_ITEM(c.label) : { label: c.label, color: c.colour })),
     };
-  if (mode === "height") return { title: "Building height", items: heightLegend() };
+  if (mode === "height") return { title: "Building height", items: heightLegend(dark) };
   if (mode === "type")
     return {
       title: "Building type",
@@ -263,7 +283,19 @@ export function typeSourceShares(fc: GeoJSON.FeatureCollection | null): { id: Us
     .filter((x) => x.share > 0);
 }
 
-/** Add derived props used by map expressions: hcat (height source), btype (OSM building class), h (metres, 0 = unknown). */
+/** Context buildings need only a height for massing. */
+export function annotateContext(fc?: GeoJSON.FeatureCollection | null): GeoJSON.FeatureCollection {
+  if (!fc) return EMPTY;
+  return {
+    ...fc,
+    features: fc.features.map((f) => {
+      const h = f.properties?.height_m;
+      return { ...f, properties: { ...f.properties, h: typeof h === "number" && h > 0 ? h : 0 } };
+    }),
+  };
+}
+
+/** Add derived props used by map expressions: hcat (height source), btype (building use), h (metres, 0 = unknown). */
 export function annotateBuildings(fc: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
   return {
     ...fc,
@@ -280,4 +312,24 @@ export function annotateBuildings(fc: GeoJSON.FeatureCollection): GeoJSON.Featur
       };
     }),
   };
+}
+
+export const sentenceCase = (id: string) => {
+  const t = id.replace(/[-_]/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+/** Planning constraints in the preview, grouped by dataset with their distinct names. */
+export function constraintGroups(fc?: GeoJSON.FeatureCollection | null): { dataset: string; label: string; count: number; names: string[] }[] {
+  const by = new Map<string, { count: number; names: Set<string> }>();
+  for (const f of fc?.features ?? []) {
+    const ds = String(f.properties?.dataset ?? "").trim();
+    if (!ds) continue;
+    const g = by.get(ds) ?? { count: 0, names: new Set<string>() };
+    g.count += 1;
+    const name = String(f.properties?.name ?? "").trim();
+    if (name) g.names.add(name);
+    by.set(ds, g);
+  }
+  return [...by].map(([dataset, g]) => ({ dataset, label: CONSTRAINT_STYLES[dataset]?.label ?? sentenceCase(dataset), count: g.count, names: [...g.names] }));
 }

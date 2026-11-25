@@ -86,3 +86,10 @@ export function utmZone(lon: number, lat: number): { zone: number; hemisphere: "
   const hemisphere = lat >= 0 ? "N" : "S";
   return { zone, hemisphere, epsg: (lat >= 0 ? 32600 : 32700) + zone };
 }
+
+/** Map zoom (512 px tiles) at which the square spans `fraction` of the smaller viewport side. */
+export function zoomToFit(halfWidthM: number, lat: number, viewportPx: number, fraction = 0.6): number {
+  const mPerPx = (2 * halfWidthM) / (fraction * Math.max(1, viewportPx));
+  const z = Math.log2((78_271.517 * Math.cos((lat * Math.PI) / 180)) / mPerPx);
+  return Math.min(18, Math.max(10, z));
+}

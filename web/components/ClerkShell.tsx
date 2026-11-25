@@ -11,7 +11,7 @@ export function ClerkShell({ children }: { children: React.ReactNode }) {
     <TokenContext.Provider value={get}>
       {children}
       <Show when="signed-in">
-        <div className="fixed right-3 top-3 z-30 hidden sm:block" style={{ right: 56 }}>
+        <div className="fixed left-[21.75rem] top-4 z-30 hidden sm:block">
           <UserButton />
         </div>
       </Show>

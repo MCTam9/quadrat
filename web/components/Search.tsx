@@ -26,10 +26,12 @@ export function Search({ onPick }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ctl = useRef<AbortController | null>(null);
+  // The query text a pick wrote into the box; searching it again would reopen the list.
+  const picked = useRef<string | null>(null);
 
   useEffect(() => {
     const text = q.trim();
-    if (text.length < 3 || parseCoordinates(text)) return;
+    if (text.length < 3 || parseCoordinates(text) || q === picked.current) return;
     const t = setTimeout(async () => {
       ctl.current?.abort();
       const c = new AbortController();
@@ -54,8 +56,12 @@ export function Search({ onPick }: Props) {
   }, [q]);
 
   function choose(h: Hit) {
+    ctl.current?.abort();
+    picked.current = h.label;
     setQ(h.label);
     setOpen(false);
+    setActive(-1);
+    (document.activeElement as HTMLElement | null)?.blur();
     onPick(h.lon, h.lat);
   }
 
@@ -63,6 +69,7 @@ export function Search({ onPick }: Props) {
     const c = parseCoordinates(q);
     if (c) {
       setOpen(false);
+      (document.activeElement as HTMLElement | null)?.blur();
       onPick(c.lon, c.lat);
     } else if (active >= 0 && hits[active]) choose(hits[active]);
     else if (hits[0]) choose(hits[0]);
@@ -73,8 +80,8 @@ export function Search({ onPick }: Props) {
 
   return (
     <div className="relative">
-      <div className="glass flex items-center gap-2 rounded-xl px-3 py-2">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted" aria-hidden>
+      <div className="sheet flex items-center gap-2 px-3 py-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-graphite" aria-hidden>
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
         </svg>
@@ -83,14 +90,15 @@ export function Search({ onPick }: Props) {
           aria-expanded={open && shown.length > 0}
           aria-controls="search-results"
           aria-label="Search a place or paste coordinates"
-          className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+          className="w-full bg-transparent text-sm outline-none placeholder:text-graphite"
           placeholder="Search a place or paste lat, lon"
           value={q}
           onChange={(e) => {
+            picked.current = null;
             setQ(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => setOpen(q !== picked.current)}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
@@ -102,23 +110,23 @@ export function Search({ onPick }: Props) {
             else if (e.key === "Escape") setOpen(false);
           }}
         />
-        {busy && <span className="skeleton h-3 w-3 shrink-0 rounded-full" aria-label="Searching" />}
+        {busy && <span className="skeleton h-3 w-3 shrink-0" aria-label="Searching" />}
       </div>
       {coord && open && (
         <button
-          className="glass mt-1 w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-track"
+          className="sheet mt-1 w-full px-3 py-2 text-left text-sm hover:bg-hover"
           onClick={() => submit()}
         >
           Go to {coord.lat.toFixed(5)}, {coord.lon.toFixed(5)}
         </button>
       )}
-      {err && <p className="glass mt-1 rounded-xl px-3 py-2 text-xs text-red-500">{err}</p>}
+      {err && <p className="sheet mt-1 px-3 py-2 text-xs">{err}</p>}
       {open && shown.length > 0 && (
-        <ul id="search-results" role="listbox" className="glass mt-1 max-h-72 overflow-auto rounded-xl py-1">
+        <ul id="search-results" role="listbox" className="sheet mt-1 max-h-72 overflow-auto py-1">
           {shown.map((h, i) => (
             <li key={`${h.lon},${h.lat},${i}`} role="option" aria-selected={i === active}>
               <button
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-track ${i === active ? "bg-track" : ""}`}
+                className={`w-full px-3 py-2 text-left text-sm hover:bg-hover ${i === active ? "bg-hover" : ""}`}
                 onClick={() => choose(h)}
               >
                 {h.label}

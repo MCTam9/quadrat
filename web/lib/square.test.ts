@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   areaKm2, clampHalf, metresPerDegree, moveCentre, resizeFromCorner, setEdgeLength,
-  squareCorners, squareRing, utmZone, withinPadded,
+  squareCorners, squareRing, utmZone, withinPadded, zoomToFit,
 } from "./square";
 import { parseCoordinates } from "./coords";
 
@@ -54,5 +54,17 @@ describe("parseCoordinates", () => {
   it("rejects text and out of range", () => {
     expect(parseCoordinates("London")).toBeNull();
     expect(parseCoordinates("200, 300")).toBeNull();
+  });
+});
+
+describe("zoomToFit", () => {
+  it("zooms out for bigger squares and smaller screens", () => {
+    expect(zoomToFit(500, 51.5, 800)).toBeLessThan(zoomToFit(125, 51.5, 800));
+    expect(zoomToFit(300, 51.5, 390)).toBeLessThan(zoomToFit(300, 51.5, 900));
+  });
+  it("puts a 600 m square across about 60 % of a 900 px screen", () => {
+    const z = zoomToFit(300, 51.5, 900);
+    const mPerPx = (78_271.517 * Math.cos((51.5 * Math.PI) / 180)) / 2 ** z;
+    expect(600 / mPerPx / 900).toBeCloseTo(0.6, 1);
   });
 });

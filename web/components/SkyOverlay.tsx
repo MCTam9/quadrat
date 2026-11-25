@@ -3,12 +3,18 @@
 import { useEffect, useReducer, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { windRose } from "@/lib/climate";
+import { sunRadiusM, windRingM } from "@/lib/overlay";
 import { approxOffsetH, sunPosition } from "@/lib/sunpath";
+import { useDark } from "@/lib/theme";
 import type { Climate } from "@/lib/types";
 import type { SquareState } from "@/lib/square";
-import { MAP_INK, SunPathLayer, WindRoseLayer } from "./charts/SkyCharts";
+import { mapInk, SunPathLayer, WindRoseLayer } from "./charts/SkyCharts";
 
-/** SVG overlay centred on the square: sun path and/or wind rose, re-projected on every map move. */
+/**
+ * SVG overlay centred on the square, re-projected on every map move.
+ * The sun path sits inside the square; the wind rose is an outer ring beyond its corners,
+ * so both read at once.
+ */
 export function SkyOverlay({
   map,
   square,
@@ -26,6 +32,7 @@ export function SkyOverlay({
 }) {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const [now, setNow] = useState(() => new Date());
+  const dark = useDark();
 
   useEffect(() => {
     if (!map) return;
@@ -49,23 +56,31 @@ export function SkyOverlay({
   const rose = hourly && wind ? windRose(hourly.wind_speed_ms, hourly.wind_direction_deg, windMonth) : null;
 
   if (!map || !square || (!sun && !wind)) return null;
-  const radiusM = square.halfWidthM * 1.2;
   const c = map.project([square.lon, square.lat]);
-  const dLon = radiusM / (111_320 * Math.cos((square.lat * Math.PI) / 180));
-  const e = map.project([square.lon + dLon, square.lat]);
-  const px = Math.hypot(e.x - c.x, e.y - c.y);
-  if (!Number.isFinite(px) || px < 20) return null;
-  const k = px / 100;
+  const dLonPerM = 1 / (111_320 * Math.cos((square.lat * Math.PI) / 180));
+  const e = map.project([square.lon + dLonPerM, square.lat]);
+  const pxPerM = Math.hypot(e.x - c.x, e.y - c.y);
+  const sunPx = sunRadiusM(square.halfWidthM) * pxPerM;
+  const ring = windRingM(square.halfWidthM);
+  const outerPx = ring.outerM * pxPerM;
+  if (!Number.isFinite(sunPx) || sunPx < 20) return null;
+  const ks = sunPx / 100;
+  const kw = outerPx / 100;
   const offset = climate?.timezone.standard_offset_h ?? approxOffsetH(square.lon);
   const nowSun = sunPosition(now, square.lat, square.lon);
+  const ink = mapInk(dark);
 
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-      <g transform={`translate(${c.x} ${c.y}) scale(${k})`}>
-        {sun && <SunPathLayer lat={square.lat} lon={square.lon} offsetH={offset} scale={k} labels={px > 90} ink={MAP_INK} nowSun={nowSun} />}
+      <g transform={`translate(${c.x} ${c.y})`}>
         {rose && rose.total > 0 && (
-          <g opacity={0.85} transform={sun ? "scale(0.7)" : undefined}>
-            <WindRoseLayer rose={rose} scale={sun ? k * 0.7 : k} labels={px > 90 && !sun} ink={MAP_INK} />
+          <g transform={`scale(${kw})`}>
+            <WindRoseLayer rose={rose} scale={kw} labels={sunPx > 60} ink={ink} inner={(ring.innerM / ring.outerM) * 100} petalOpacity={0.55} />
+          </g>
+        )}
+        {sun && (
+          <g transform={`scale(${ks})`}>
+            <SunPathLayer lat={square.lat} lon={square.lon} offsetH={offset} scale={ks} labels={sunPx > 60} ink={ink} nowSun={nowSun} />
           </g>
         )}
       </g>

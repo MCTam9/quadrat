@@ -25,8 +25,8 @@ export function dayLabel(day: number): string {
 // ---- wind rose ----
 export const WIND_BINS = [0, 2, 4, 6, 8, 10];
 export const WIND_BIN_LABELS = ["0-2", "2-4", "4-6", "6-8", "8-10", "10+"];
-/** Sequential single-hue ramp, light (calm) to dark (strong). */
-export const WIND_COLOURS = ["#bfd9ee", "#8dbde0", "#5a9bd0", "#2f77b8", "#1b559a", "#102f66"];
+/** Sequential graphite-to-ink ramp, calm to strong (CSS variables: they flip in dark mode). */
+export const WIND_COLOURS = ["var(--wind-0)", "var(--wind-1)", "var(--wind-2)", "var(--wind-3)", "var(--wind-4)", "var(--wind-5)"];
 export const COMPASS16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 
 export interface WindRose {

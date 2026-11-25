@@ -9,6 +9,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import {
   annotateBuildings,
   annotateConstraints,
+  annotateContext,
   annotateContours,
   annotateStreets,
   DEFAULT_LAYERS,
@@ -17,15 +18,15 @@ import {
   saveLayers,
   type LayerState,
 } from "@/lib/layers";
-import { clampHalf, moveCentre, withinPadded, type SquareState } from "@/lib/square";
+import { clampHalf, moveCentre, withinPadded, zoomToFit, type SquareState } from "@/lib/square";
 import type { Analysis, Climate, LayerEvent, Preview, ReadyEvent } from "@/lib/types";
 import { Search } from "./Search";
-import { ClimatePanel } from "./ClimatePanel";
-import { Legend, LayersControl } from "./LayersControl";
+import { LegendCard, LayersControl } from "./LayersControl";
 import { SkyOverlay } from "./SkyOverlay";
-import { SquareCard } from "./SquareCard";
-import { ExportPanel, type ExportRequest } from "./ExportPanel";
-import { AccessCard, ClimateCard, CompletenessCard, ConstraintsCard, DensityCard, LandUseCard, StreetsCard, TerrainCard } from "./Cards";
+import { SitePanel, type Tab } from "./SitePanel";
+import type { ExportRequest } from "./ExportPanel";
+import { parseHeightShares, sharesFromBuildings } from "@/lib/buildings";
+import { reverseName, type SiteName } from "@/lib/site-name";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -54,12 +55,12 @@ export function Picker() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [prev, setPrev] = useState<Preview | null>(null);
   const [threeD, setThreeD] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(true);
   const [flyTo, setFlyTo] = useState<{ lon: number; lat: number; zoom?: number; nonce: number } | null>(null);
   const [initial, setInitial] = useState(WORLD);
   const [exporting, setExporting] = useState(false);
   const [layerState, setLayerState] = useState<LayerState>(DEFAULT_LAYERS);
-  const [tab, setTab] = useState<"analysis" | "climate">("analysis");
+  const [tab, setTab] = useState<Tab>("analysis");
+  const [name, setName] = useState<SiteName | null>(null);
   const [map, setMap] = useState<MapLibreMap | null>(null);
   const [climate, setClimate] = useState<Climate | null>(null);
   const [climateLoading, setClimateLoading] = useState(false);
@@ -88,7 +89,7 @@ export function Picker() {
     if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 85 && Math.abs(lon) <= 180) {
       const s = { lon, lat, halfWidthM: clampHalf(Number.isFinite(size) ? size / 2 : DEFAULT_HALF) };
       /* eslint-disable react-hooks/set-state-in-effect */
-      setInitial({ lon, lat, zoom: 15 });
+      setInitial({ lon, lat, zoom: zoomToFit(s.halfWidthM, lat, Math.min(window.innerWidth, window.innerHeight)) });
       setSquare(s);
       setSettled(s);
       /* eslint-enable react-hooks/set-state-in-effect */
@@ -126,10 +127,15 @@ export function Picker() {
     });
   }, []);
 
+  const halfRef = useRef(DEFAULT_HALF);
+  useEffect(() => {
+    if (square) halfRef.current = square.halfWidthM;
+  }, [square]);
   const pick = useCallback(
     (lon: number, lat: number) => {
       place(lon, lat);
-      setFlyTo({ lon, lat, zoom: 15, nonce: Date.now() });
+      // Frame the whole square, so its grips are on screen.
+      setFlyTo({ lon, lat, zoom: zoomToFit(halfRef.current, lat, Math.min(window.innerWidth, window.innerHeight)), nonce: Date.now() });
     },
     [place],
   );
@@ -154,6 +160,20 @@ export function Picker() {
     [tok],
   );
 
+  /** Run a request against the loaded site; if the server forgot it (409), reload once and retry. */
+  const withReload = useCallback(
+    async <T,>(s: SquareState, signal: AbortSignal, run: (ready: ReadyEvent) => Promise<T>, start?: ReadyEvent | null): Promise<T> => {
+      const ready = start ?? (await ensureLoaded(s, signal));
+      try {
+        return await run(ready);
+      } catch (e) {
+        if (!(e instanceof ReloadRequired)) throw e;
+        return run(await ensureLoaded(s, signal, true));
+      }
+    },
+    [ensureLoaded],
+  );
+
   // run analysis once the square settles (debounced)
   useEffect(() => {
     if (!settled) return;
@@ -165,20 +185,13 @@ export function Picker() {
       const c = new AbortController();
       ctl.current = c;
       try {
-        const run = async (force: boolean) => {
-          const ready = await ensureLoaded(s, c.signal, force);
+        const [a, pv] = await withReload(s, c.signal, async (ready) => {
           const p: SiteParams = { site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM };
           setAnalysing(true);
-          const [a, pv] = await Promise.all([analyse(p, tok, c.signal), fetchPreview(p, tok, c.signal)]);
-          setAnalysis(a);
-          setPrev(pv);
-        };
-        try {
-          await run(false);
-        } catch (e) {
-          if (e instanceof ReloadRequired) await run(true);
-          else throw e;
-        }
+          return Promise.all([analyse(p, tok, c.signal), fetchPreview(p, tok, c.signal)]);
+        });
+        setAnalysis(a);
+        setPrev(pv);
       } catch (e) {
         if ((e as Error).name !== "AbortError") toast((e as Error).message || "Analysis failed");
       } finally {
@@ -189,7 +202,7 @@ export function Picker() {
       if (timer.current) clearTimeout(timer.current);
       ctl.current?.abort();
     };
-  }, [settled, ensureLoaded, tok, toast]);
+  }, [settled, withReload, tok, toast]);
 
   // Climate does not change when the square moves: fetch once per loaded site.
   const siteId = loaded?.site_id ?? null;
@@ -206,15 +219,9 @@ export function Picker() {
     /* eslint-enable react-hooks/set-state-in-effect */
     (async () => {
       try {
-        let cl: Climate;
-        try {
-          cl = await fetchClimate(siteId, tok, c.signal);
-        } catch (e) {
-          const s = settledRef.current;
-          if (!(e instanceof ReloadRequired) || !s) throw e;
-          const ready = await ensureLoaded(s, c.signal, true);
-          cl = await fetchClimate(ready.site_id, tok, c.signal);
-        }
+        const s = settledRef.current;
+        if (!s) return;
+        const cl = await withReload(s, c.signal, (ready) => fetchClimate(ready.site_id, tok, c.signal), loadedRef.current);
         setClimate(cl);
       } catch (e) {
         if ((e as Error).name !== "AbortError") setClimateError((e as Error).message || "Climate request failed");
@@ -223,24 +230,15 @@ export function Picker() {
       }
     })();
     return () => c.abort();
-  }, [siteId, climateNonce, tok, ensureLoaded]);
+  }, [siteId, climateNonce, tok, withReload]);
 
   async function doExport(r: ExportRequest) {
     const s = settled ?? square;
     if (!s) return;
     setExporting(true);
     try {
-      const body = (ready: ReadyEvent) => ({ site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM, ...r });
-      const c = new AbortController();
-      let ready = await ensureLoaded(s, c.signal);
-      let blob: Blob;
-      try {
-        blob = await exportZip(body(ready), tok);
-      } catch (e) {
-        if (!(e instanceof ReloadRequired)) throw e;
-        ready = await ensureLoaded(s, c.signal, true);
-        blob = await exportZip(body(ready), tok);
-      }
+      const ready = await ensureLoaded(s, new AbortController().signal);
+      const blob = await exportZip({ site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM, ...r }, tok);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -257,6 +255,7 @@ export function Picker() {
   }
 
   const buildings = useMemo(() => (prev ? annotateBuildings(prev.buildings) : null), [prev]);
+  const context = useMemo(() => (prev?.context ? annotateContext(prev.context) : null), [prev]);
   const streets = useMemo(() => (prev ? annotateStreets(prev.streets) : null), [prev]);
   const landuse = useMemo(() => prev?.landuse ?? null, [prev]);
   const contours = useMemo(() => (prev ? annotateContours(prev.contours, prev.contour_interval_m) : null), [prev]);
@@ -267,10 +266,30 @@ export function Picker() {
     () => (useShares.length ? 1 - (useShares.find((u) => u.id === "none")?.share ?? 0) : null),
     [useShares],
   );
+  const heightShares = useMemo(
+    () => parseHeightShares(analysis?.metrics.fabric?.height_source_shares) ?? sharesFromBuildings(buildings),
+    [analysis, buildings],
+  );
   const landuseClasses = useMemo(() => [...new Set((prev?.landuse?.features ?? []).map((f) => String(f.properties?.class ?? "other")))], [prev]);
-  const m = analysis?.metrics;
   const stale = analysing || loading;
   const loadList = Object.values(layers);
+
+  // Name the site: reverse-geocode once the square settles, cached by rounded position.
+  useEffect(() => {
+    if (!settled) return;
+    const c = new AbortController();
+    const t = setTimeout(() => {
+      reverseName(settled.lon, settled.lat, c.signal)
+        .then((n) => setName(n))
+        .catch(() => {
+          if (!c.signal.aborted) setName(null);
+        });
+    }, 500);
+    return () => {
+      clearTimeout(t);
+      c.abort();
+    };
+  }, [settled]);
 
   return (
     <main className="relative h-dvh w-full overflow-hidden">
@@ -280,6 +299,7 @@ export function Picker() {
         onPlace={place}
         flyTo={flyTo}
         buildings={buildings}
+        context={context}
         streets={streets}
         threeD={threeD}
         mode={layerState.mode}
@@ -292,123 +312,62 @@ export function Picker() {
       />
       <SkyOverlay map={map} square={square} sun={layerState.overlays.sun} wind={layerState.overlays.wind} climate={climate} windMonth={windMonth} />
 
-      {/* top-left: search + view controls */}
+      {/* top-left: search, view mode and layers */}
       <div className="pointer-events-none absolute left-3 right-3 top-3 z-10 flex max-w-sm flex-col gap-2 sm:right-auto sm:w-80">
         <div className="pointer-events-auto"><Search onPick={pick} /></div>
-        <div className="pointer-events-auto glass flex items-center gap-1 self-start rounded-xl p-1" role="group" aria-label="View mode">
-          {[false, true].map((v) => (
-            <button
-              key={String(v)}
-              aria-pressed={threeD === v}
-              onClick={() => setThreeD(v)}
-              className={`rounded-lg px-3 py-1 text-xs font-medium ${threeD === v ? "bg-accent text-accent-fg" : "hover:bg-track"}`}
-            >
-              {v ? "3D" : "2D"}
-            </button>
-          ))}
-        </div>
-        <LayersControl
-          layers={layerState}
-          onChange={changeLayers}
-          legend={<Legend layers={layerState} hasBuildings={!!buildings} constraintDatasets={constraintDatasets} landuseClasses={landuseClasses} useShares={useShares} />}
-        />
+        <LayersControl layers={layerState} onChange={changeLayers} threeD={threeD} onThreeD={setThreeD} />
       </div>
 
-      {/* right panel / mobile bottom sheet */}
-      <aside
-        className={`glass absolute inset-x-0 bottom-6 z-10 flex flex-col overflow-hidden rounded-t-2xl sm:inset-x-auto sm:bottom-9 sm:right-3 sm:top-3 sm:w-[380px] sm:rounded-2xl ${sheetOpen ? "max-h-[58vh] sm:max-h-none" : "max-h-12 sm:max-h-none"}`}
-        aria-label="Site analysis"
-      >
-        <button
-          className="flex items-center justify-between px-4 py-3 text-sm font-semibold sm:hidden"
-          onClick={() => setSheetOpen((o) => !o)}
-          aria-expanded={sheetOpen}
-        >
-          <span>{square ? "Site analysis" : "Pick a site"}</span>
-          <span aria-hidden>{sheetOpen ? "▾" : "▴"}</span>
-        </button>
-        <div className="flex-1 space-y-3 overflow-y-auto p-3">
-          {!square ? (
-            <div className="p-4 text-sm text-muted">
-              Search for a place, then click the map to drop a square. Drag the centre to move it and the corner handles to resize.
-              Live analysis and a building preview appear before you download anything.
-            </div>
-          ) : (
-            <>
-              <div className="glass-inset flex gap-1 rounded-xl bg-track p-1" role="tablist" aria-label="Panel">
-                {(["analysis", "climate"] as const).map((t) => (
-                  <button
-                    key={t}
-                    role="tab"
-                    aria-selected={tab === t}
-                    onClick={() => setTab(t)}
-                    className={`flex-1 rounded-lg px-3 py-1 text-xs font-semibold capitalize ${tab === t ? "bg-accent text-accent-fg" : "hover:bg-track"}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              {tab === "climate" ? (
-                <ClimatePanel
-                  climate={climate}
-                  loading={climateLoading || loading}
-                  error={climateError}
-                  onRetry={() => setClimateNonce((n) => n + 1)}
-                  windMonth={windMonth}
-                  onWindMonth={setWindMonth}
-                  lat={square.lat}
-                  lon={square.lon}
-                  onDownloadEpw={() => doExport({ formats: ["epw"], report: false })}
-                  epwBusy={exporting}
-                />
-              ) : (
-              <>
-              <SquareCard square={square} onChange={(s) => onSquare(s, true)} />
-              {(loading || loadList.length > 0) && loading && (
-                <section className="rounded-xl border border-line p-3" aria-live="polite">
-                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Loading site data</h3>
-                  <ul className="space-y-1 text-xs">
-                    {loadList.map((l) => (
-                      <li key={l.layer} className="flex items-center gap-2">
-                        <span className={l.ok ? "text-green-500" : "text-red-500"}>{l.ok ? "✓" : "✕"}</span>
-                        <span className="capitalize">{l.layer}</span>
-                        <span className="ml-auto text-muted">{l.provider ?? ""}{typeof l.features === "number" ? ` · ${l.features}` : ""}</span>
-                      </li>
-                    ))}
-                    <li className="flex items-center gap-2 text-muted"><span className="skeleton h-3 w-3 rounded-full" />fetching…</li>
-                  </ul>
-                </section>
-              )}
-              <CompletenessCard a={analysis} typeKnown={typeKnown} />
-              <ExportPanel busy={exporting} disabled={!loaded || !settled} onExport={doExport} />
-              <DensityCard m={m?.fabric} loading={stale} stale={stale && !!m} />
-              <StreetsCard m={m?.street} loading={stale} stale={stale && !!m} />
-              <LandUseCard m={m?.landuse} loading={stale} stale={stale && !!m} />
-              <TerrainCard m={m?.terrain} loading={stale} stale={stale && !!m} />
-              <AccessCard m={m?.access} loading={stale} stale={stale && !!m} />
-              <ClimateCard m={m?.climate} loading={stale} stale={stale && !!m} />
-              <ConstraintsCard m={m?.constraints} />
-              </>
-              )}
-            </>
-          )}
-        </div>
-      </aside>
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-center gap-2 px-3 py-0.5 text-[10px] text-muted">
-        <span className="pointer-events-auto rounded bg-glass px-1.5 py-0.5 backdrop-blur">
-          © OpenStreetMap contributors (ODbL) · OpenFreeMap · Photon
-        </span>
+      {/* bottom-left: legend above the dev pill; the map's attribution sits at the bottom edge beside them */}
+      <div className="pointer-events-none absolute bottom-[calc(var(--peek)+2.25rem)] left-3 z-10 flex flex-col items-start gap-2 sm:bottom-14">
+        {!!buildings && square && (
+          <LegendCard
+            layers={layerState}
+            hasBuildings={!!buildings}
+            hasContext={!!context?.features.length}
+            constraintDatasets={constraintDatasets}
+            landuseClasses={landuseClasses}
+            useShares={useShares}
+          />
+        )}
         {!CLERK_ENABLED && (
-          <span className="pointer-events-auto rounded bg-amber-500/20 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-300">
-            Dev mode: auth disabled
-          </span>
+          <span className="pointer-events-auto border border-edge bg-sheet px-2 py-0.5 text-[11px] font-semibold">Dev mode: auth disabled</span>
         )}
       </div>
 
-      <div className="pointer-events-none absolute bottom-12 left-1/2 z-20 flex -translate-x-1/2 flex-col gap-2" role="status" aria-live="assertive">
+      <SitePanel
+        square={square}
+        onSquare={(s) => onSquare(s, true)}
+        name={name}
+        analysis={analysis}
+        preview={prev}
+        shares={heightShares}
+        typeKnown={typeKnown}
+        stale={stale}
+        loading={loading}
+        loadList={loadList}
+        tab={tab}
+        onTab={setTab}
+        climate={{
+          climate,
+          loading: climateLoading || loading,
+          error: climateError,
+          onRetry: () => setClimateNonce((n) => n + 1),
+          windMonth,
+          onWindMonth: setWindMonth,
+          lat: square?.lat ?? 0,
+          lon: square?.lon ?? 0,
+          onDownloadEpw: () => doExport({ formats: ["epw"], report: false }),
+          epwBusy: exporting,
+        }}
+        exporting={exporting}
+        canExport={!!loaded && !!settled}
+        onExport={doExport}
+      />
+
+      <div className="pointer-events-none absolute inset-x-3 bottom-[calc(var(--peek)+1rem)] z-30 flex flex-col items-center gap-2 sm:bottom-6" role="status" aria-live="assertive">
         {toasts.map((t) => (
-          <div key={t.id} className="pointer-events-auto glass max-w-sm rounded-xl border-red-500/40 px-4 py-2 text-sm text-red-600 dark:text-red-400">
+          <div key={t.id} className="pointer-events-auto sheet max-w-sm border-red-line px-4 py-2 text-sm">
             {t.msg}
           </div>
         ))}

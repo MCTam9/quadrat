@@ -20,22 +20,25 @@ import type { Climate } from "@/lib/types";
 import { Card, Stat } from "./Cards";
 import { SunLegend, SunPathChart, WindLegend, WindRoseChart } from "./charts/SkyCharts";
 
-const AXIS = "var(--muted)";
-const GRID = "var(--line)";
+const AXIS = "var(--graphite)";
+const GRID = "var(--rule)";
+/** One chart height for every monthly chart, and a 12-unit axis font: 1 unit is about 1 px at panel width. */
+const CHART_H = 140;
+const AXIS_FS = 12;
 
 function Section({ title, children, note }: { title: string; children: ReactNode; note?: string }) {
   return (
-    <section className="space-y-1.5 border-t border-line pt-3 first:border-0 first:pt-0">
-      <h4 className="text-xs font-semibold">{title}</h4>
+    <section className="space-y-1.5">
+      <h4 className="text-sm font-semibold">{title}</h4>
       {children}
-      {note && <p className="text-[10px] text-muted">{note}</p>}
+      {note && <p className="text-xs text-graphite">{note}</p>}
     </section>
   );
 }
 
 export function ClimateSkeleton() {
   return (
-    <div className="space-y-3" aria-busy="true" aria-label="Loading climate data">
+    <div className="space-y-4" aria-busy="true" aria-label="Loading climate data">
       <div className="grid grid-cols-3 gap-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="space-y-1.5">
@@ -91,14 +94,15 @@ function Heatmap({ temps }: { temps: (number | null)[] }) {
 
   return (
     <div>
-      <div className="mb-1 h-4 text-[11px] tabular-nums" aria-live="polite">{readout}</div>
-      <div className="flex gap-1">
-        <div className="flex flex-col justify-between py-0 text-[9px] text-muted" aria-hidden="true">
+      <div className="mb-1 h-4 text-xs nums" aria-live="polite">{readout}</div>
+      <div className="flex gap-1.5">
+        <div className="flex w-5 flex-col justify-between text-[11px] leading-none text-graphite" aria-hidden="true">
           {[0, 6, 12, 18].map((h) => <span key={h}>{String(h).padStart(2, "0")}</span>)}
           <span className="opacity-0">24</span>
         </div>
         <div
-          className="relative h-28 flex-1 cursor-crosshair touch-none overflow-hidden rounded"
+          className="relative flex-1 cursor-crosshair touch-none overflow-hidden"
+          style={{ height: CHART_H - PAD.t - PAD.b }}
           tabIndex={0}
           role="img"
           aria-label="Annual hourly dry-bulb temperature heatmap: 365 days across, 24 hours down. Use arrow keys to inspect values."
@@ -110,21 +114,21 @@ function Heatmap({ temps }: { temps: (number | null)[] }) {
           <canvas ref={canvas} width={365} height={24} className="h-full w-full" style={{ imageRendering: "pixelated" }} />
           {cur && (
             <div
-              className="pointer-events-none absolute border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
+              className="pointer-events-none absolute border border-white shadow-[0_0_0_1px_rgba(0,0,0,0.7)]"
               style={{ left: `${(cur.day / 365) * 100}%`, top: `${(cur.hour / 24) * 100}%`, width: `${100 / 365}%`, minWidth: 3, height: `${100 / 24}%` }}
             />
           )}
         </div>
       </div>
-      <div className="relative ml-[18px] mt-0.5 h-3 text-[9px] text-muted" aria-hidden="true">
+      <div className="relative ml-[26px] mt-1 h-4 text-[11px] text-graphite" aria-hidden="true">
         {MONTH_NAMES.map((m, i) => (
           <span key={m} className="absolute" style={{ left: `${(MONTH_START_HOUR[i] / 8760) * 100}%` }}>{m[0]}</span>
         ))}
       </div>
       <div className="mt-1 flex items-center gap-2" aria-label="Temperature colour scale in degrees Celsius">
-        <div className="ml-[18px] h-2 flex-1 rounded-sm" style={{ background: `linear-gradient(90deg,${grad})` }} />
+        <div className="ml-[26px] h-2 flex-1" style={{ background: `linear-gradient(90deg,${grad})` }} />
       </div>
-      <div className="relative ml-[18px] mt-0.5 h-3 text-[9px] text-muted tabular-nums" aria-hidden="true">
+      <div className="relative ml-[26px] mt-0.5 h-4 text-[11px] text-graphite nums" aria-hidden="true">
         {[-10, 0, 10, 20, 30, 40].map((v) => (
           <span key={v} className="absolute -translate-x-1/2" style={{ left: `${((v - lo) / (hi - lo)) * 100}%` }}>{v}°</span>
         ))}
@@ -134,8 +138,8 @@ function Heatmap({ temps }: { temps: (number | null)[] }) {
 }
 
 // ---------- shared monthly axes ----------
-const W = 340;
-const PAD = { l: 30, r: 8, t: 8, b: 16 };
+const W = 368;
+const PAD = { l: 36, r: 8, t: 8, b: 20 };
 
 function niceMax(v: number): number {
   if (v <= 0) return 1;
@@ -149,13 +153,13 @@ function MonthAxis({ h }: { h: number }) {
   return (
     <>
       {MONTH_NAMES.map((m, i) => (
-        <text key={m} x={PAD.l + bw * (i + 0.5)} y={h - 3} fontSize={8.5} textAnchor="middle" fill={AXIS}>{m[0]}</text>
+        <text key={m} x={PAD.l + bw * (i + 0.5)} y={h - 4} fontSize={AXIS_FS} textAnchor="middle" fill={AXIS}>{m[0]}</text>
       ))}
     </>
   );
 }
 
-function MonthlyBars({ values, color, unit, label, digits = 0, h = 110 }: { values: (number | null)[]; color: string; unit: string; label: string; digits?: number; h?: number }) {
+function MonthlyBars({ values, color, unit, label, digits = 0, h = CHART_H }: { values: (number | null)[]; color: string; unit: string; label: string; digits?: number; h?: number }) {
   const [hov, setHov] = useState<number | null>(null);
   const max = niceMax(Math.max(0, ...values.map((v) => v ?? 0)));
   const bw = (W - PAD.l - PAD.r) / 12;
@@ -163,14 +167,14 @@ function MonthlyBars({ values, color, unit, label, digits = 0, h = 110 }: { valu
   const ticks = [0, max / 2, max];
   return (
     <div>
-      <div className="h-4 text-[11px] tabular-nums" aria-live="polite">
+      <div className="h-4 text-xs nums" aria-live="polite">
         {hov !== null ? `${MONTH_NAMES[hov]}: ${num(values[hov], digits)} ${unit}` : ""}
       </div>
       <svg viewBox={`0 0 ${W} ${h}`} className="block w-full" role="img" aria-label={`${label}, monthly bars. ${values.map((v, i) => `${MONTH_NAMES[i]} ${num(v, digits)}`).join(", ")} ${unit}`} onPointerLeave={() => setHov(null)}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth={t === 0 ? 1 : 0.75} />
-            <text x={PAD.l - 4} y={y(t) + 3} fontSize={8.5} textAnchor="end" fill={AXIS}>{Number.isInteger(t) ? t : t.toFixed(1)}</text>
+            <text x={PAD.l - 4} y={y(t) + 3} fontSize={AXIS_FS} textAnchor="end" fill={AXIS}>{Number.isInteger(t) ? t : t.toFixed(1)}</text>
           </g>
         ))}
         {values.map((v, i) => {
@@ -194,10 +198,10 @@ function MonthlyBars({ values, color, unit, label, digits = 0, h = 110 }: { valu
 }
 
 // ---------- temperatures ----------
-const T_BAND = "#e0894b";
+const T_BAND = "var(--ch-warm)";
 function MonthlyTemps({ monthly }: { monthly: Climate["monthly"] }) {
   const [hov, setHov] = useState<number | null>(null);
-  const h = 150;
+  const h = CHART_H;
   const all = monthly.flatMap((m) => [m.temp_record_max_c, m.temp_record_min_c, m.temp_mean_daily_max_c, m.temp_mean_daily_min_c]).filter((v): v is number => typeof v === "number");
   const lo = Math.floor((Math.min(0, ...all) - 1) / 5) * 5;
   const hi = Math.ceil((Math.max(...all, 10) + 1) / 5) * 5;
@@ -214,22 +218,22 @@ function MonthlyTemps({ monthly }: { monthly: Climate["monthly"] }) {
   const m = hov !== null ? monthly[hov] : null;
   return (
     <div>
-      <div className="h-4 text-[11px] tabular-nums" aria-live="polite">
+      <div className="h-4 text-xs nums" aria-live="polite">
         {m ? `${MONTH_NAMES[hov!]}: mean ${num(m.temp_mean_c)}, daily ${num(m.temp_mean_daily_min_c)} to ${num(m.temp_mean_daily_max_c)}, record ${num(m.temp_record_min_c)} / ${num(m.temp_record_max_c)} °C` : ""}
       </div>
       <svg viewBox={`0 0 ${W} ${h}`} className="block w-full" role="img" aria-label={`Monthly temperatures. ${monthly.map((q, i) => `${MONTH_NAMES[i]} mean ${num(q.temp_mean_c)}`).join(", ")} °C`} onPointerLeave={() => setHov(null)}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth={t === 0 ? 1.25 : 0.75} />
-            <text x={PAD.l - 4} y={y(t) + 3} fontSize={8.5} textAnchor="end" fill={AXIS}>{t}°</text>
+            <text x={PAD.l - 4} y={y(t) + 3} fontSize={AXIS_FS} textAnchor="end" fill={AXIS}>{t}°</text>
           </g>
         ))}
         {band && <path d={band} fill={T_BAND} opacity={0.28} />}
         {mean.length > 0 && <path d={`M${mean.join("L")}`} fill="none" stroke={T_BAND} strokeWidth={2} />}
         {monthly.map((q, i) => (
-          <g key={i} stroke="var(--surface)" strokeWidth={2}>
-            {typeof q.temp_record_max_c === "number" && <circle cx={x(i)} cy={y(q.temp_record_max_c)} r={3} fill="#b3261e" />}
-            {typeof q.temp_record_min_c === "number" && <circle cx={x(i)} cy={y(q.temp_record_min_c)} r={3} fill="#2b5fa8" />}
+          <g key={i} stroke="var(--sheet)" strokeWidth={2}>
+            {typeof q.temp_record_max_c === "number" && <circle cx={x(i)} cy={y(q.temp_record_max_c)} r={3} fill="var(--ch-warm)" />}
+            {typeof q.temp_record_min_c === "number" && <circle cx={x(i)} cy={y(q.temp_record_min_c)} r={3} fill="var(--ch-cool)" />}
           </g>
         ))}
         {hov !== null && <line x1={x(hov)} x2={x(hov)} y1={PAD.t} y2={h - PAD.b} stroke={AXIS} strokeWidth={0.75} strokeDasharray="2 2" />}
@@ -238,11 +242,11 @@ function MonthlyTemps({ monthly }: { monthly: Climate["monthly"] }) {
         ))}
         <MonthAxis h={h} />
       </svg>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted" aria-label="Legend">
-        <li className="flex items-center gap-1"><span className="h-2.5 w-3.5 rounded-sm opacity-40" style={{ background: T_BAND }} />Mean daily min to max</li>
-        <li className="flex items-center gap-1"><span className="h-0.5 w-3.5" style={{ background: T_BAND }} />Mean</li>
-        <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: "#b3261e" }} />Record max</li>
-        <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: "#2b5fa8" }} />Record min</li>
+      <ul className="flex flex-nowrap gap-x-3 text-[11px] text-graphite" aria-label="Legend">
+        <li className="flex items-center gap-1 whitespace-nowrap"><span className="h-2.5 w-3.5 opacity-40" style={{ background: T_BAND }} />Daily range</li>
+        <li className="flex items-center gap-1 whitespace-nowrap"><span className="h-0.5 w-3.5" style={{ background: T_BAND }} />Mean</li>
+        <li className="flex items-center gap-1 whitespace-nowrap"><span className="h-2 w-2 rounded-full" style={{ background: "var(--ch-warm)" }} />Record high</li>
+        <li className="flex items-center gap-1 whitespace-nowrap"><span className="h-2 w-2 rounded-full" style={{ background: "var(--ch-cool)" }} />Record low</li>
       </ul>
     </div>
   );
@@ -250,21 +254,21 @@ function MonthlyTemps({ monthly }: { monthly: Climate["monthly"] }) {
 
 // ---------- comfort ----------
 const COMFORT = [
-  { key: "cold", label: "Too cold (< 18 °C)", color: "#4f86c6" },
-  { key: "comfortable", label: "Comfortable (18 to 26 °C)", color: "#58a982" },
-  { key: "hot", label: "Too hot (> 26 °C)", color: "#ec8446" },
+  { key: "cold", label: "Below 18 °C", color: "var(--ch-cool)" },
+  { key: "comfortable", label: "18 to 26 °C", color: "var(--ch-ok)" },
+  { key: "hot", label: "Above 26 °C", color: "var(--ch-warm)" },
 ] as const;
 
 function Comfort({ temps }: { temps: (number | null)[] }) {
   const [hov, setHov] = useState<number | null>(null);
   const data = useMemo(() => comfortCounts(temps), [temps]);
-  const h = 120;
+  const h = CHART_H;
   const bw = (W - PAD.l - PAD.r) / 12;
   const y = (pctv: number) => PAD.t + (1 - pctv) * (h - PAD.t - PAD.b);
   const annual = data.reduce((a, m) => a + m.comfortable, 0);
   return (
     <div>
-      <div className="h-4 text-[11px] tabular-nums" aria-live="polite">
+      <div className="h-4 text-xs nums" aria-live="polite">
         {hov !== null
           ? `${MONTH_NAMES[hov]}: ${data[hov].cold} h cold, ${data[hov].comfortable} h comfortable, ${data[hov].hot} h hot`
           : `${annual.toLocaleString()} comfortable hours a year (${((annual / 8760) * 100).toFixed(0)} %)`}
@@ -273,7 +277,7 @@ function Comfort({ temps }: { temps: (number | null)[] }) {
         {[0, 0.5, 1].map((t) => (
           <g key={t}>
             <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth={0.75} />
-            <text x={PAD.l - 4} y={y(t) + 3} fontSize={8.5} textAnchor="end" fill={AXIS}>{t * 100}%</text>
+            <text x={PAD.l - 4} y={y(t) + 3} fontSize={AXIS_FS} textAnchor="end" fill={AXIS}>{t * 100}%</text>
           </g>
         ))}
         {data.map((m, i) => {
@@ -297,9 +301,9 @@ function Comfort({ temps }: { temps: (number | null)[] }) {
         ))}
         <MonthAxis h={h} />
       </svg>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted" aria-label="Legend">
+      <ul className="flex flex-nowrap gap-x-3 text-[11px] text-graphite nums" aria-label="Legend">
         {COMFORT.map((c) => (
-          <li key={c.key} className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: c.color }} />{c.label}</li>
+          <li key={c.key} className="flex items-center gap-1 whitespace-nowrap"><span className="h-2.5 w-2.5" style={{ background: c.color }} />{c.label}</li>
         ))}
       </ul>
     </div>
@@ -342,14 +346,14 @@ export function ClimatePanel({
   if (error && !climate)
     return (
       <Card title="Climate">
-        <p className="text-xs text-red-600 dark:text-red-400">Climate data failed to load: {error}</p>
-        <button onClick={onRetry} className="mt-2 rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-track">Retry</button>
+        <p className="text-xs">Climate data failed to load: {error}</p>
+        <button onClick={onRetry} className="mt-2 border border-edge px-3 py-1.5 text-xs font-semibold hover:bg-hover">Retry</button>
       </Card>
     );
   if (!climate || !hourly || !rose || !annualRose)
     return (
       <Card title="Climate" loading={loading}>
-        {loading ? <ClimateSkeleton /> : <p className="text-xs text-muted">Climate data appears once site data has loaded.</p>}
+        {loading ? <ClimateSkeleton /> : <p className="text-xs text-graphite">Climate data appears once site data has loaded.</p>}
       </Card>
     );
 
@@ -359,41 +363,41 @@ export function ClimatePanel({
   const src = climate.source;
   const tz = climate.timezone;
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card title="Climate summary">
         <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
           <Stat label="Mean temp" value={num(a.mean_temp_c)} unit="°C" />
-          <Stat label="HDD 18 °C" value={num(a.hdd_18c, 0)} title="Heating degree days, base 18 °C" />
-          <Stat label="CDD 18 °C" value={num(a.cdd_18c, 0)} title="Cooling degree days, base 18 °C" />
+          <Stat label="Heating degree days" value={num(a.hdd_18c, 0)} title="Base 18 °C" />
+          <Stat label="Cooling degree days" value={num(a.cdd_18c, 0)} title="Base 18 °C" />
           <Stat label="Solar (GHI)" value={num(a.ghi_kwh_m2, 0)} unit="kWh/m²" />
           <Stat label="Precipitation" value={num(a.precip_mm, 0)} unit="mm" />
           <Stat label="Prevailing wind" value={compassLabel(annualRose.prevailing)} unit={annualRose.meanSpeed !== null ? `${num(annualRose.meanSpeed)} m/s` : undefined} title="Direction the wind blows from, with annual mean speed" />
         </div>
       </Card>
 
-      <Card title="Wind rose">
+      <Card title="Wind rose" major>
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <label htmlFor="wind-month" className="text-muted">Period</label>
+          <label htmlFor="wind-month" className="text-graphite">Period</label>
           <select
             id="wind-month"
             value={windMonth === null ? "all" : String(windMonth)}
             onChange={(e) => onWindMonth(e.target.value === "all" ? null : Number(e.target.value))}
-            className="rounded-lg border border-line bg-transparent px-2 py-1 text-xs"
+            className="border border-rule bg-sheet px-2 py-1 text-xs"
           >
             <option value="all">Annual</option>
             {MONTH_NAMES.map((m, i) => <option key={m} value={i}>{m}</option>)}
           </select>
-          <span className="ml-auto text-[11px] text-muted tabular-nums">
+          <span className="ml-auto text-xs text-graphite">
             Also drives the map overlay
           </span>
         </div>
         <WindRoseChart rose={rose} />
         <div className="mt-1"><WindLegend /></div>
-        <p className="mt-1 text-[10px] text-muted">Petals point to where the wind comes from; length is share of hours. Prevailing: {compassLabel(rose.prevailing)}, mean {num(rose.meanSpeed)} m/s.</p>
+        <p className="mt-1 text-xs text-graphite">Petals point to where the wind comes from; length is share of hours. Prevailing: {compassLabel(rose.prevailing)}, mean {num(rose.meanSpeed)} m/s.</p>
       </Card>
 
-      <Card title="Temperature">
-        <div className="space-y-3">
+      <Card title="Temperature" major>
+        <div className="space-y-5">
           <Section title="Hourly dry-bulb temperature, typical year">
             <Heatmap temps={hourly.temperature_c} />
           </Section>
@@ -401,40 +405,40 @@ export function ClimatePanel({
             <MonthlyTemps monthly={climate.monthly} />
           </Section>
           <Section title="Precipitation (mm)">
-            <MonthlyBars values={climate.monthly.map((m) => m.precip_mm)} color="#3f7fbf" unit="mm" label="Monthly precipitation" />
+            <MonthlyBars values={climate.monthly.map((m) => m.precip_mm)} color="var(--ch-rain)" unit="mm" label="Monthly precipitation" />
           </Section>
         </div>
       </Card>
 
-      <Card title="Solar">
-        <div className="space-y-3">
+      <Card title="Solar" major>
+        <div className="space-y-5">
           <Section title="Global horizontal irradiation (kWh/m²)">
-            <MonthlyBars values={climate.monthly.map((m) => m.ghi_kwh_m2)} color="#e0a82e" unit="kWh/m²" label="Monthly global horizontal irradiation" />
+            <MonthlyBars values={climate.monthly.map((m) => m.ghi_kwh_m2)} color="var(--ch-solar)" unit="kWh/m²" label="Monthly global horizontal irradiation" />
           </Section>
-          <Section title="Sun path" note={`Stereographic, north at top. Hour dots in local standard time (UTC${offset >= 0 ? "+" : ""}${offset}${tz.approximate ? ", approximate" : ""}). Yellow marker is the sun now.`}>
+          <Section title="Sun path" note={`Stereographic, north at top. Hour dots in local standard time (UTC${offset >= 0 ? "+" : ""}${offset}${tz.approximate ? ", approximate" : ""}). The filled marker is the sun now.`}>
             <SunPathChart lat={lat} lon={lon} offsetH={offset} nowSun={nowSun} />
             <SunLegend />
           </Section>
         </div>
       </Card>
 
-      <Card title="Thermal comfort">
+      <Card title="Thermal comfort" major>
         <Comfort temps={hourly.temperature_c} />
-        <p className="mt-1 text-[10px] text-muted">Hours by dry-bulb temperature only, from the typical-year hourly data. Not an adaptive comfort or PMV model.</p>
+        <p className="mt-1 text-xs text-graphite">Hours by dry-bulb temperature only, from the typical-year hourly data. Not an adaptive comfort or PMV model.</p>
       </Card>
 
       <Card title="EnergyPlus weather file">
         <button
           onClick={onDownloadEpw}
           disabled={epwBusy}
-          className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-fg transition-opacity disabled:opacity-40"
+          className="w-full border border-edge px-3 py-2 text-sm font-semibold transition-opacity hover:bg-hover disabled:opacity-40"
         >
-          {epwBusy ? "Building EPW…" : "Download EPW (Ladybug / EnergyPlus)"}
+          {epwBusy ? "Building EPW" : "Download EPW for Ladybug and EnergyPlus"}
         </button>
-        <p className="mt-1 text-[10px] text-muted">A zip containing a typical-year .epw for this site.</p>
+        <p className="mt-1 text-xs text-graphite">A zip containing a typical-year .epw for this site.</p>
       </Card>
 
-      <p className="px-1 pb-2 text-[10px] leading-relaxed text-muted">
+      <p className="pb-2 text-xs leading-relaxed text-graphite">
         <strong>Regional climate, not site microclimate.</strong> {src.name}, {src.period}; grid point {src.grid_point_lonlat[1].toFixed(2)}, {src.grid_point_lonlat[0].toFixed(2)}
         {typeof src.elevation_m === "number" ? ` at ${Math.round(src.elevation_m)} m` : ""}. {src.licence}. {src.note}
         {" "}Typical year built from: {typicalYearLabel(climate.typical_year.months_from_years)}. {climate.typical_year.method}

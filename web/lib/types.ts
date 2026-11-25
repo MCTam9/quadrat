@@ -10,7 +10,7 @@ export interface LayerEvent {
 
 export interface ReadyEvent {
   site_id: string;
-  epsg: number;
+  epsg: string;
   centre: [number, number];
   padded_half_width_m: number;
   bbox_wgs84?: [number, number, number, number];
@@ -25,12 +25,11 @@ export interface Analysis {
     access?: Metrics;
     terrain?: Metrics;
     climate?: Metrics;
-    constraints?: Metrics;
     errors?: Record<string, string>;
     [k: string]: unknown;
   };
   assessment?: { coverage?: unknown; degraded?: boolean; warnings?: string[] };
-  layers?: Record<string, { provider?: string; coverage?: number | null; degraded?: boolean; notes?: string }>;
+  layers?: Record<string, { provider?: string; coverage?: number | null; degraded?: boolean; notes?: string[] }>;
 }
 
 export interface Preview {
@@ -41,6 +40,8 @@ export interface Preview {
   contours?: GeoJSON.FeatureCollection;
   contour_interval_m?: number | null;
   constraints?: GeoJSON.FeatureCollection;
+  /** Buildings in a ring just outside the square (props: height_m), for context massing. */
+  context?: GeoJSON.FeatureCollection;
 }
 
 export interface ClimateSource {

@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Archivo } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { CLERK_ENABLED } from "@/lib/env";
 import { ClerkShell } from "@/components/ClerkShell";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Variable Archivo with the width axis: expanded for the site name and figures, normal elsewhere.
+const archivo = Archivo({ subsets: ["latin"], axes: ["wdth"], variable: "--font-archivo", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Site picker",
@@ -16,7 +17,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={archivo.variable}>
       {/* Browser extensions inject attributes on <body>; not our mismatch. */}
       <body suppressHydrationWarning>
         {CLERK_ENABLED ? (
