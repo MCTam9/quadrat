@@ -17,6 +17,7 @@ import shapely
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
+from ._buildings import summarise_building_heights
 from ._height import LEVEL_HEIGHT_M
 
 BUCKET = "overturemaps-us-west-2"
@@ -97,9 +98,6 @@ class OvertureBuildingsProvider(Provider):
         gdf_proj = aoi.to_metric(gdf)
         gdf_clipped = aoi.clip(gdf_proj)
 
-        known = gdf_clipped["height_source"].astype(bool).sum()
-        coverage = float(known) / float(len(gdf_clipped)) if len(gdf_clipped) else 0.0
-
         source = Source(
             name="Overture Maps Foundation — buildings theme",
             url=f"s3://{BUCKET}/release/{release}/{THEME_PATH}/",
@@ -112,15 +110,12 @@ class OvertureBuildingsProvider(Provider):
             commercial_ok=True,
         )
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            gdf=gdf_clipped,
-            sources=[source],
-            coverage=coverage,
-            degraded=coverage < 0.5,
-            notes=[] if coverage >= 0.5 else ["fewer than half of buildings have a known height"],
+        return self.summarise(
+            LayerResult(layer=self.layer, provider=self.name, gdf=gdf_clipped, sources=[source]), aoi
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        return summarise_building_heights(result)
 
 
 REGISTRY.register(OvertureBuildingsProvider())

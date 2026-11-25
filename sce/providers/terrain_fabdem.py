@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import math
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -60,7 +61,7 @@ from rasterio.merge import merge as rio_merge
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
-from ._terrain_grid import elevation_summary, reproject_merged_to_square_grid
+from ._terrain_grid import elevation_summary, inside_aoi, reproject_merged_to_square_grid
 
 RESOLUTION_M = 30.0
 LICENCE = "CC BY-NC-SA 4.0 (Bristol/Fathom FABDEM v1.2)"
@@ -175,25 +176,34 @@ class FabdemTerrainProvider(Provider):
         if missing:
             notes.append(f"AOI partially covered: missing tiles {', '.join(missing)}.")
 
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            raster={
-                "array": dst_arr,
-                "transform": dst_transform,
-                "crs": aoi.crs,
-                "nodata": float("nan"),
-                "res": (RESOLUTION_M, RESOLUTION_M),
-            },
-            data={
-                "terrain_model": "DTM",
-                **elevation_summary(dst_arr),
-            },
-            sources=[source],
-            coverage=1.0 if not missing else max(0.0, 1.0 - len(missing) / (len(missing) + len(found))),
-            degraded=bool(missing),
-            notes=notes,
+        return self.summarise(
+            LayerResult(
+                layer=self.layer,
+                provider=self.name,
+                raster={
+                    "array": dst_arr,
+                    "transform": dst_transform,
+                    "crs": aoi.crs,
+                    "nodata": float("nan"),
+                    "res": (RESOLUTION_M, RESOLUTION_M),
+                },
+                data={
+                    "terrain_model": "DTM",
+                },
+                sources=[source],
+                coverage=1.0 if not missing else max(0.0, 1.0 - len(missing) / (len(missing) + len(found))),
+                degraded=bool(missing),
+                notes=notes,
+            ),
+            aoi,
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Elevation min/max/mean over the finite cells inside the square."""
+        arr = np.asarray(result.raster["array"], dtype=float)
+        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
+        data = {**(result.data or {}), **elevation_summary(np.where(inside, arr, np.nan))}
+        return replace(result, data=data)
 
 
 REGISTRY.register(FabdemTerrainProvider())

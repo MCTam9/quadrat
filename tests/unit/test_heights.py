@@ -86,7 +86,15 @@ def test_non_ndsm_raster_is_a_no_op():
 def test_stale_low_coverage_note_dropped_once_lidar_fills_gaps():
     """The provider's 'fewer than half' note must not survive enrichment that fixed it."""
     layers = _layers()
-    layers["buildings"].notes = ["fewer than half of buildings have a known height"]
+    layers["buildings"].findings = ["fewer than half of buildings have a known height"]
     out = enrich_building_heights(layers)
     assert out["buildings"].coverage >= 0.5
-    assert not any("known height" in n for n in out["buildings"].notes)
+    assert out["buildings"].findings == []
+    assert not out["buildings"].degraded
+
+
+def test_registered_provider_summarise_is_used():
+    layers = _layers()
+    layers["buildings"].provider = "osm_buildings"
+    out = enrich_building_heights(layers)
+    assert out["buildings"].coverage == pytest.approx(2 / 3)

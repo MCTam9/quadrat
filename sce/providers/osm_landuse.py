@@ -7,6 +7,8 @@ over with a plausible-looking default.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import osmnx as ox
 import pandas as pd
 from shapely import make_valid
@@ -61,10 +63,6 @@ class OsmLanduseProvider(Provider):
         gdf_clipped = aoi.clip(gdf_proj)
         gdf_clipped = gdf_clipped[~gdf_clipped.geometry.is_empty]
 
-        union = unary_union([make_valid(g) for g in gdf_clipped.geometry])
-        coverage = float(union.area) / float(aoi.area_m2) if aoi.area_m2 else 0.0
-        coverage = min(coverage, 1.0)
-
         source = Source(
             name="OpenStreetMap contributors (via Overpass API)",
             url="https://www.openstreetmap.org/copyright",
@@ -76,25 +74,26 @@ class OsmLanduseProvider(Provider):
             commercial_ok=True,
         )
 
-        degraded = coverage < 0.5
-        notes = (
-            []
-            if not degraded
-            else [
+        return self.summarise(
+            LayerResult(layer=self.layer, provider=self.name, gdf=gdf_clipped, sources=[source]), aoi
+        )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Coverage = union area of the polygons over the square's area."""
+        geoms = [] if result.gdf is None else [make_valid(g) for g in result.gdf.geometry if g is not None]
+        union = unary_union(geoms) if geoms else None
+        area = float(union.area) if union is not None else 0.0
+        coverage = min(area / float(aoi.area_m2), 1.0) if aoi.area_m2 else 0.0
+        low = coverage < 0.5
+        findings = (
+            [
                 f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
                 "the remainder is genuinely unmapped, not implied to be any particular class"
             ]
+            if low
+            else []
         )
-
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            gdf=gdf_clipped,
-            sources=[source],
-            coverage=coverage,
-            degraded=degraded,
-            notes=notes,
-        )
+        return replace(result, coverage=coverage, degraded=low, findings=findings)
 
 
 REGISTRY.register(OsmLanduseProvider())

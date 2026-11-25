@@ -30,6 +30,14 @@ class Registry:
             return [p for ps in self._by_layer.values() for p in ps]
         return list(self._by_layer.get(layer, []))
 
+    def provider(self, name: str) -> Provider | None:
+        """The registered provider called `name`, or None."""
+        for ps in self._by_layer.values():
+            for p in ps:
+                if p.name == name:
+                    return p
+        return None
+
     def chain(self, layer: str, aoi) -> list[Provider]:
         return [p for p in self._by_layer.get(layer, []) if p.available(aoi)]
 

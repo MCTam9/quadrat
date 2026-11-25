@@ -6,8 +6,9 @@ per drag would take tens of seconds; clipping takes well under one.
 
 Contract: the inner AOI must share the outer AOI's CRS (build it with
 `AOI.from_point(..., crs=outer.crs)`), and must lie inside the outer square.
-Every derived figure a provider computed over the outer square (coverage,
-GHSL mean height, elevation summary) is recomputed over the inner one, so a
+Only geometry is cut here; every derived figure (coverage, mean height,
+elevation summary, findings) is recomputed by the owning provider's
+`summarise`, the same code that ran at fetch, so a
 metric never sees a number that belongs to a different area.
 """
 
@@ -73,71 +74,21 @@ def _clip_graph(graph: Any, inner: AOI) -> Any:
 
 
 def _clip_one(layer: str, result: LayerResult, inner: AOI) -> LayerResult:
+    """Cut the geometry to `inner`; the owning provider re-summarises it for that square."""
+    import sce.providers  # noqa: F401  (registers the providers so REGISTRY is populated)
+
+    from .registry import REGISTRY
+
     gdf = inner.clip(result.gdf) if result.gdf is not None else None
     raster = _clip_raster(result.raster, inner) if result.raster is not None else None
-    data = dict(result.data) if result.data is not None else None
-    coverage = result.coverage
-    notes = list(result.notes)
-    inside_mask = None
-    if raster is not None:
-        from .providers._terrain_grid import inside_aoi
-
-        inside_mask = inside_aoi(np.asarray(raster["array"]).shape, raster["transform"], inner)
-
+    data = result.data
     if layer == "streets" and data and data.get("graph") is not None:
-        data["graph"] = _clip_graph(data["graph"], inner)
-    elif layer == "buildings" and gdf is not None and "height_source" in gdf.columns:
-        known = gdf["height_source"].astype(bool).sum()
-        coverage = float(known) / float(len(gdf)) if len(gdf) else 0.0
-    elif layer == "building_height" and raster is not None:
-        arr = np.asarray(raster["array"], dtype=float)
-        valid = arr[np.isfinite(arr) & (arr > 0.0)]
-        coverage = float(np.isfinite(arr).sum()) / arr.size if arr.size else 0.0
-        data = {**(data or {}), "mean_height_m": float(valid.mean()) if valid.size else None}
-    elif layer == "landuse" and gdf is not None:
-        from shapely import union_all
-        from shapely.validation import make_valid
-
-        geoms = [make_valid(g) for g in gdf.geometry if g is not None and not g.is_empty]
-        area = float(union_all(geoms).area) if geoms else 0.0
-        coverage = min(area / inner.area_m2, 1.0) if inner.area_m2 else 0.0
-        notes = [n for n in notes if "of the AOI carries" not in n]
-        if coverage < 0.5:
-            notes.append(
-                f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
-                "the remainder is genuinely unmapped, not implied to be any particular class"
-            )
-    elif layer == "landcover" and raster is not None and data is not None:
-        from .providers.landcover_worldcover import CLASSES
-
-        arr = np.asarray(raster["array"])
-        inside = inside_mask
-        total = max(int(inside.sum()), 1)
-        fractions = {
-            name: int(np.count_nonzero((arr == code) & inside)) / total
-            for code, name in CLASSES.items()
-            if np.count_nonzero((arr == code) & inside)
-        }
-        unclassified = int(np.count_nonzero((arr == 0) & inside)) / total
-        if unclassified:
-            fractions["Unclassified/no data"] = unclassified
-        data = {**data, "class_fractions": fractions}
-        coverage = 1.0 - unclassified
-    elif layer == "terrain" and raster is not None:
-        from .providers._terrain_grid import elevation_summary
-
-        data = {**(data or {}), **elevation_summary(np.asarray(raster["array"], dtype=float))}
-
-    # Coverage is a property of the square it was measured over: everything a
-    # provider judged over the padded fetch is re-judged over the inner square.
-    degraded = result.degraded
-    if layer in ("buildings", "landuse", "building_height") and coverage is not None:
-        degraded = coverage < 0.5
-    if layer == "buildings":
-        notes = [n for n in notes if not ("known height" in n and coverage is not None and coverage >= 0.5)]
-    return replace(
-        result, gdf=gdf, raster=raster, data=data, coverage=coverage, notes=notes, degraded=degraded
-    )
+        data = {**data, "graph": _clip_graph(data["graph"], inner)}
+    clipped = replace(result, gdf=gdf, raster=raster, data=data)
+    provider = REGISTRY.provider(result.provider)
+    if provider is None:
+        return replace(clipped, findings=[])
+    return provider.summarise(clipped, inner)
 
 
 def clip_layers(layers: dict[str, LayerResult], outer: AOI, inner: AOI) -> dict[str, LayerResult]:

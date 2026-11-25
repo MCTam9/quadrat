@@ -16,6 +16,8 @@ import numpy as np
 from rasterio.features import geometry_mask
 from rasterio.transform import Affine
 
+from .providers._buildings import summarise_building_heights
+from .registry import REGISTRY
 from .types import LayerResult
 
 MIN_CELL_HEIGHT_M = 2.0
@@ -95,20 +97,23 @@ def enrich_building_heights(
     gdf["height_m"] = heights
     gdf["height_source"] = sources
 
-    known = float(np.isfinite(heights).sum())
-    coverage = known / len(gdf)
-    # The provider's own low-coverage note describes the pre-LiDAR state.
-    notes = [n for n in buildings.notes if not (coverage >= 0.5 and "known height" in n)]
+    notes = list(buildings.notes)
     n_lidar = int((sources == "lidar").sum())
     if n_lidar:
         notes.append(f"{n_lidar} building heights measured from LiDAR nDSM ({height.provider})")
     new_buildings = replace(
         buildings,
         gdf=gdf,
-        coverage=coverage,
-        degraded=coverage < 0.5,
         notes=notes,
         sources=list(buildings.sources) + [s for s in height.sources if s not in buildings.sources],
+    )
+    # Coverage, degraded and findings are the buildings provider's own rule,
+    # re-run now that LiDAR heights are filled in.
+    provider = REGISTRY.provider(buildings.provider)
+    new_buildings = (
+        provider.summarise(new_buildings, None)
+        if provider is not None
+        else summarise_building_heights(new_buildings)
     )
     out = dict(layers)
     out["buildings"] = new_buildings

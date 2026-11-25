@@ -24,6 +24,7 @@ falls through to GHS-BUILT-H.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -183,14 +184,6 @@ class EaLidarBuildingHeightProvider(Provider):
         arr, transform = reproject_merged_to_square_grid(ndsm, mosaic_transform, _BNG, aoi, res)
         arr = np.where(np.isfinite(arr), np.maximum(arr, 0.0), np.nan).astype(np.float32)
 
-        finite = np.isfinite(arr)
-        # Coverage over the site square only: corner cells of the bounding box
-        # are blanked by reproject_merged_to_square_grid, not missing LiDAR.
-        inside = inside_aoi(arr.shape, transform, aoi)
-        coverage = float((finite & inside).sum()) / float(max(int(inside.sum()), 1))
-        tall = arr[finite & (arr > BUILDING_LIKE_MIN_M)]
-        mean_h = float(tall.mean()) if tall.size else None
-
         source = Source(
             name="Environment Agency National LiDAR Programme composite DSM (last return) and DTM, 1 m",
             url=f"{BASE}/ (WCS, EPSG:27700)",
@@ -199,27 +192,46 @@ class EaLidarBuildingHeightProvider(Provider):
             note="Contains Environment Agency information (c) Environment Agency and/or database right.",
             commercial_ok=True,
         )
-        return LayerResult(
-            layer=self.layer,
-            provider=self.name,
-            raster={
-                "array": arr,
-                "transform": transform,
-                "crs": aoi.crs,
-                "nodata": float("nan"),
-                "res": (res, res),
-                "kind": "ndsm",
-            },
-            data={"mean_height_m": mean_h, "kind": "ndsm"},
-            sources=[source],
-            coverage=coverage,
-            degraded=coverage < 0.5,
-            notes=[
-                "nDSM = last-return DSM minus DTM (EA LiDAR composites, mixed survey epochs); "
-                f"resampled to a square {res:g} m grid in {aoi.epsg}; negatives clipped to 0.",
-                f"mean_height_m is the mean over cells taller than {BUILDING_LIKE_MIN_M} m.",
-            ],
+        return self.summarise(
+            LayerResult(
+                layer=self.layer,
+                provider=self.name,
+                raster={
+                    "array": arr,
+                    "transform": transform,
+                    "crs": aoi.crs,
+                    "nodata": float("nan"),
+                    "res": (res, res),
+                    "kind": "ndsm",
+                },
+                data={"kind": "ndsm"},
+                sources=[source],
+                notes=[
+                    "nDSM = last-return DSM minus DTM (EA LiDAR composites, mixed survey epochs); "
+                    f"resampled to a square {res:g} m grid in {aoi.epsg}; negatives clipped to 0.",
+                    f"mean_height_m is the mean over cells taller than {BUILDING_LIKE_MIN_M} m.",
+                ],
+            ),
+            aoi,
         )
+
+    def summarise(self, result: LayerResult, aoi) -> LayerResult:
+        """Coverage over the cells inside the square; mean over cells above BUILDING_LIKE_MIN_M.
+
+        Corner cells of the bounding box belong to the neighbours, not missing LiDAR.
+        """
+        arr = np.asarray(result.raster["array"], dtype=float)
+        inside = inside_aoi(arr.shape, result.raster["transform"], aoi)
+        finite = np.isfinite(arr) & inside
+        n_inside = int(inside.sum())
+        coverage = float(finite.sum()) / n_inside if n_inside else 0.0
+        tall = arr[finite & (arr > BUILDING_LIKE_MIN_M)]
+        data = {
+            **(result.data or {}),
+            "mean_height_m": float(tall.mean()) if tall.size else None,
+            "kind": "ndsm",
+        }
+        return replace(result, data=data, coverage=coverage, degraded=coverage < 0.5, findings=[])
 
 
 REGISTRY.register(EaLidarBuildingHeightProvider())
