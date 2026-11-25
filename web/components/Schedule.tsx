@@ -35,7 +35,72 @@ function Bar({ value, className = "" }: { value: number; className?: string }) {
   );
 }
 
-function Row({ label, children, aside }: { label: string; children: React.ReactNode; aside?: React.ReactNode }) {
+/**
+ * A term with a definition that pops up on hover or keyboard focus, and toggles on tap for
+ * touch screens. Dotted underline marks it as explained.
+ */
+export function Term({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <span className="relative inline-block" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        className="cursor-help underline decoration-dotted decoration-1 underline-offset-4"
+        aria-describedby={open ? id : undefined}
+        aria-expanded={open}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+      >
+        {label}
+      </button>
+      {open && (
+        <span
+          id={id}
+          role="tooltip"
+          className="sheet absolute left-0 top-full z-30 mt-1.5 block w-72 space-y-1.5 p-3 text-left text-xs font-normal leading-snug text-ink shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const TYPICAL = "text-graphite";
+
+function FsiTip({ fsi, gsi }: { fsi: number | null; gsi: number | null }) {
+  const storeys = fsi != null && gsi ? fsi / gsi : null;
+  return (
+    <>
+      <span className="block font-semibold">Floor space index</span>
+      <span className="block">
+        Total floor area across all storeys, divided by the site area.
+        {fsi != null && ` ${num(fsi, 2)} means ${num(fsi, 2)} m² of floor for every m² of ground.`}
+      </span>
+      <span className="block">Floor area is footprint × height ÷ 3 m per storey. Buildings with no known height count as zero floors.</span>
+      {storeys != null && <span className="block">FSI ÷ GSI ≈ {num(storeys, 1)} storeys on average.</span>}
+      <span className={`block ${TYPICAL}`}>Also called floor area ratio (FAR) or plot ratio. Suburb 0.3–0.5, terraces 1–1.5, central London 3–4, City of London 5+.</span>
+    </>
+  );
+}
+
+function GsiTip({ gsi }: { gsi: number | null }) {
+  return (
+    <>
+      <span className="block font-semibold">Ground space index</span>
+      <span className="block">
+        Building footprints divided by the site area.
+        {gsi != null && ` ${num(gsi, 2)} means buildings cover ${Math.round(gsi * 100)} % of the ground; the rest is streets, yards and open space.`}
+      </span>
+      <span className={`block ${TYPICAL}`}>Also called site coverage. Suburb 0.15–0.25, terraces 0.4–0.5, dense centres 0.5–0.6.</span>
+    </>
+  );
+}
+
+function Row({ label, children, aside }: { label: React.ReactNode; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-x-3 border-t border-rule py-2 last:border-b">
       <dt className="text-sm text-graphite">{label}</dt>
@@ -66,7 +131,11 @@ export function Schedule({
       <h3 className="sr-only">Key figures</h3>
       <dl>
         <Row
-          label="FSI"
+          label={
+            <Term label="FSI">
+              <FsiTip fsi={asNum(m?.fsi) ?? null} gsi={asNum(m?.gsi) ?? null} />
+            </Term>
+          }
           aside={
             known != null && !wait ? (
               <span className="inline-flex items-center gap-1.5" title={shares ? heightSourceText(shares) : undefined}>
@@ -78,7 +147,13 @@ export function Schedule({
         >
           {val(num(m?.fsi, 2))}
         </Row>
-        <Row label="GSI">{val(num(m?.gsi, 2))}</Row>
+        <Row
+          label={
+            <Term label="GSI">
+              <GsiTip gsi={asNum(m?.gsi) ?? null} />
+            </Term>
+          }
+        >{val(num(m?.gsi, 2))}</Row>
         <Row label="Buildings">{val(asNum(m?.building_count) ?? "–")}</Row>
         <Row label="Area">
           {areaKm2(square).toFixed(2)} <span className="text-sm font-normal text-graphite">km²</span>
