@@ -23,6 +23,10 @@ import type { Analysis, Climate, LayerEvent, Preview, ReadyEvent } from "@/lib/t
 import { Search } from "./Search";
 import { LegendCard, LayersControl } from "./LayersControl";
 import { SkyOverlay } from "./SkyOverlay";
+import { Sky3D } from "./Sky3D";
+import { windRose } from "@/lib/climate";
+import { approxOffsetH } from "@/lib/sunpath";
+import { useDark } from "@/lib/theme";
 import { SitePanel, type Tab } from "./SitePanel";
 import type { ExportRequest } from "./ExportPanel";
 import { parseHeightShares, sharesFromBuildings } from "@/lib/buildings";
@@ -55,6 +59,7 @@ export function Picker() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [prev, setPrev] = useState<Preview | null>(null);
   const [threeD, setThreeD] = useState(false);
+  const dark = useDark();
   const [flyTo, setFlyTo] = useState<{ lon: number; lat: number; zoom?: number; nonce: number } | null>(null);
   const [initial, setInitial] = useState(WORLD);
   const [exporting, setExporting] = useState(false);
@@ -67,6 +72,10 @@ export function Picker() {
   const [climateError, setClimateError] = useState<string | null>(null);
   const [climateNonce, setClimateNonce] = useState(0);
   const [windMonth, setWindMonth] = useState<number | null>(null);
+  const rose3d = useMemo(() => {
+    const h = climate?.typical_year.hourly;
+    return threeD && layerState.overlays.wind && h ? windRose(h.wind_speed_ms, h.wind_direction_deg, windMonth) : null;
+  }, [climate, threeD, layerState.overlays.wind, windMonth]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const ctl = useRef<AbortController | null>(null);
@@ -310,12 +319,29 @@ export function Picker() {
         onMap={setMap}
         initial={initial}
       />
-      <SkyOverlay map={map} square={square} sun={layerState.overlays.sun} wind={layerState.overlays.wind} climate={climate} windMonth={windMonth} />
+      {/* 2D: a flat drawing on the plan. 3D: the sun path rises off the ground as a dome and the
+          wind rose rings it on the ground, both projected with the map's own camera. */}
+      <SkyOverlay map={map} square={square} sun={layerState.overlays.sun && !threeD} wind={layerState.overlays.wind && !threeD} climate={climate} windMonth={windMonth} />
+      {threeD && (
+        <Sky3D
+          map={map}
+          square={square}
+          sun={layerState.overlays.sun}
+          rose={rose3d}
+          offsetH={climate?.timezone.standard_offset_h ?? (square ? approxOffsetH(square.lon) : 0)}
+          dark={dark}
+        />
+      )}
 
       {/* top-left: search, view mode and layers */}
       <div className="pointer-events-none absolute left-3 right-3 top-3 z-10 flex max-w-sm flex-col gap-2 sm:right-auto sm:w-80">
         <div className="pointer-events-auto"><Search onPick={pick} /></div>
         <LayersControl layers={layerState} onChange={changeLayers} threeD={threeD} onThreeD={setThreeD} />
+        {threeD && (
+          <p className="sheet pointer-events-auto self-start px-2 py-1 text-[11px] text-graphite">
+            Orbit: <kbd className="font-semibold text-ink">⌥</kbd> + two-finger scroll, right-drag, or twist two fingers
+          </p>
+        )}
       </div>
 
       {/* bottom-left: legend above the dev pill; the map's attribution sits at the bottom edge beside them */}
