@@ -135,7 +135,7 @@ Web checks run in CI as their own job: `npm run typecheck`, `lint`, `test`, `bui
 ## Style
 
 Type hints, `from __future__ import annotations`, no comments that restate the
-code, docstrings that explain *why*. Line length 100. No new dependencies
+code, docstrings that explain *why*. Line length 110 (ruff; CI also runs `ruff format --check`). No new dependencies
 without saying so. Prefer stdlib and what is already installed:
 osmnx 2.1.1, geopandas 1.1.4, shapely 2.x, pyproj, rasterio 1.5.1, matplotlib,
 numpy, pandas, requests, networkx, pyarrow, ezdxf 1.4.4, click. Optional extras:

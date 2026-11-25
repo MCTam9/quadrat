@@ -1,217 +1,245 @@
 # Site Context Report
 
-Coordinates and a radius, anywhere on earth, to an A3 sheet and machine-readable
-data: urban morphology, terrain, land cover, climate, accessibility and, where
-the data exists, statutory planning constraints.
+Site Context Report (`sce`, the site context engine) takes a square of ground
+anywhere on earth and describes it from open data: buildings, streets, land use,
+terrain, land cover, climate and, in Great Britain, planning constraints. It
+computes urban metrics (floor space index, ground space index, street and block
+structure, land use mix, slope, degree days, solar and wind) and writes them out
+as an A3 PDF sheet and as CAD and GIS files. It is aimed at architects, urban
+designers and planners who need a quick, repeatable site analysis at the start of
+a project. Everything it reads is free to use and needs no API keys.
+
+It ships three ways to use it:
+
+- a command line tool, `sce`;
+- a Python package, `sce`, if you want the layers and metrics in your own code;
+- a private web app (FastAPI in `api/`, Next.js in `web/`) where you drag a square
+  on a map and watch the analysis update.
+
+## Quick start
+
+Requires Python 3.12 or newer (CI runs 3.12, 3.13 and 3.14). Pure pip: no conda,
+no system GDAL.
 
 ```bash
-sce report --coords 69.2401,41.2995 --name tashkent --radius 1200 \
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,rhino,mesh,web]"   # everything; see "Install options" below
+```
+
+### Command line
+
+Coordinates are `lon,lat` in decimal degrees. `--radius` is the half-width of the
+square in metres.
+
+```bash
+sce report --coords -0.1276,51.5074 --name london --radius 1200 \
            --export gpkg --export dxf
 ```
 
-The same command runs in Tashkent, London and Riyadh. Nothing about the
-invocation changes; the London sheet simply carries a Conservation Area boundary
-because that data exists in Great Britain and not in Uzbekistan.
+This writes into `out/`: the A3 sheet `london.pdf`, the dossier
+`london.dossier.json`, and the GeoPackage and DXF. The first run for a site
+fetches data over the network (about a minute) and caches it; later runs are
+fast. `sce report --help` lists every option.
 
-I did this analysis by hand once, on a 111,800 m² masterplan in Shanghai. It
-now runs in about a minute, anywhere.
+Other commands:
 
-## What comes out
+```bash
+sce compare tashkent=69.2401,41.2995 london=-0.1276,51.5074 --radius 1200
+sce providers      # every data provider, its layer, rank and licence
+sce attribution    # regenerate ATTRIBUTION.md from the provider registry
+```
 
-| File | What it is |
+`sce compare` puts two to four sites on one A3 sheet (`out/compare.pdf`) with every
+figure-ground drawn at the same scale. It normalises but deliberately does not
+score or rank: weighting one site against another is the client's judgement, and
+a test enforces that no row declares a preferred direction.
+
+### Web app, locally
+
+Terminal 1, from the repo root (API on port 8000, authentication off):
+
+```bash
+SCE_AUTH_DISABLED=1 uvicorn api.main:app --port 8000
+```
+
+Terminal 2:
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:3000
+```
+
+In development Next.js proxies `/api/*` to `127.0.0.1:8000`. With no Clerk keys
+set the app runs without sign-in and shows a "Dev mode" pill. Check the API with
+`curl localhost:8000/api/health`. More in [web/README.md](web/README.md).
+
+### Install options
+
+| Command | Adds |
 |---|---|
-| `<site>.pdf` | A3 landscape vector sheet, figure-ground dominant |
-| `<site>.dossier.json` | Every metric, every source, licence and retrieval date, git SHA |
-| `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, with QGIS styles |
-| `<site>.dxf` | Real-world metres, layered for AutoCAD, Rhino, Revit and Vectorworks |
-| `<site>.3dm` | Rhino model: buildings with known heights extruded to solids, the rest left as flat curves |
-| `<site>.svg` | Plan drawing, 1 unit = 1 m, one group per CAD layer (imports as layers in Illustrator/Inkscape) |
-| `<site>.geojson` | Every layer in WGS84 (RFC 7946), with height and height source per building |
-| `<site>.glb` / `.obj` | 3D mesh: terrain plus buildings seated on it, at a local origin recorded in `georef.json` |
-| `compare.pdf` | Two to four sites at one shared scale |
+| `pip install -e ".[dev]"` | CLI, pytest, ruff, httpx |
+| `pip install -e ".[rhino]"` | `.3dm` export (rhino3dm) |
+| `pip install -e ".[mesh]"` | `.glb` and `.obj` export (trimesh, mapbox-earcut) |
+| `pip install -e ".[web]"` | FastAPI, uvicorn, PyJWT for `api/` |
 
-## Verified on three continents
+## Data sources
 
-Run on 2026-09-06 at a 1,200 m radius, no code changes between sites.
+All sources are free and keyless. Run `sce providers` for the live list; the
+full licence text per source is in [ATTRIBUTION.md](ATTRIBUTION.md), which is
+generated from the provider registry rather than written by hand.
 
-| | Tashkent | London | Riyadh |
+| Layer | Source | Licence | Coverage |
 |---|---|---|---|
-| Projection chosen | EPSG:32642 | EPSG:32630 | EPSG:32638 |
-| Intersections per km² | 198 | 245 | — |
-| Mean street segment | 52 m | 27 m | — |
-| Ground space index | 0.20 | 0.40 | 0.44 |
-| Floor space index | 0.64, from GHSL | 1.18, from OSM | from GHSL |
-| Median block | 0.25 ha | 0.40 ha | — |
-| Heating degree days | 2,183 | 2,335 | 210 |
-| Cooling degree days | 1,382 | 126 | 3,696 |
-| Annual solar, kWh/m² | 1,669 | 1,136 | 2,116 |
-| Prevailing wind | NW | SW | — |
-| OSM land use coverage | 91% | 40% | 8% |
+| Buildings | OpenStreetMap (Overpass), then Overture Maps | ODbL | Global |
+| Streets, land use, amenities | OpenStreetMap | ODbL | Global |
+| Building heights (fallback) | Global Human Settlement Layer (GHSL) | CC BY 4.0 | Global, about 100 m |
+| Building heights (measured) | Environment Agency 1 m LiDAR | OGL v3.0 | England only |
+| Terrain | Copernicus GLO-30 | ESA COPDEM licence | Global; a surface model, not bare earth |
+| Terrain, bare earth (opt-in) | FABDEM, via `--dtm fabdem` | CC BY-NC-SA 4.0 | Global; non-commercial, tiles supplied by you |
+| Land cover | ESA WorldCover | CC BY 4.0 | Global |
+| Climate | ERA5 reanalysis via Open-Meteo | CC BY 4.0 | Global; Open-Meteo's free tier is non-commercial |
+| Planning constraints | planning.data.gov.uk | OGL v3.0 | England only |
 
-The last row is why the tool reads ESA WorldCover as well as OpenStreetMap. Over
-much of Central Asia and the Gulf, OSM land use is close to absent, and a single
-mix statistic computed over mostly unmapped ground is precisely wrong. The sheet
-shows the unmapped share explicitly and puts the satellite land cover beside it.
+Two conditions are enforced in code. The GeoPackage and DXF exports carry
+OpenStreetMap-derived geometry and are therefore subject to ODbL share-alike
+when you redistribute them. Any non-commercial source is skipped unless you opt
+in, and its licence is then printed on the sheet.
 
-## Comparing sites
+The MIT licence in [LICENSE](LICENSE) covers this source code only. Data the tool
+retrieves keeps its own terms.
 
-```bash
-sce compare tashkent=69.2401,41.2995 london=-0.1276,51.5074 riyadh=46.6753,24.7136 \
-            --radius 1200
+OSM queries fall back across several Overpass servers, because the main public one
+often answers "at capacity". Override the list with `SCE_OVERPASS_URLS`
+(comma-separated).
+
+## Output formats
+
+The PDF sheet and the dossier are always written (the sheet can be skipped with
+`--no-sheet`). Other formats are requested with `--export` (repeatable) in the CLI
+or ticked in the web app's download panel, which returns them as one ZIP.
+
+| `--export` | File | What it is |
+|---|---|---|
+| always | `<site>.pdf` | A3 landscape vector sheet, figure-ground dominant |
+| `json` / always | `<site>.dossier.json` | Every metric, source, licence, retrieval date and git SHA |
+| `gpkg` | `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, plus QGIS `.qml` styles |
+| `dxf` | `<site>.dxf` | Real-world metres, layered for AutoCAD, Rhino, Revit, Vectorworks |
+| `3dm` | `<site>.3dm` | Rhino model: buildings with known heights as solids, the rest as flat curves (needs `[rhino]`) |
+| `svg` | `<site>.svg` | Plan drawing, 1 unit = 1 m, one group per CAD layer |
+| `geojson` | `<site>.geojson` | Every layer in WGS84, with height and height source per building |
+| `glb`, `obj` | `<site>.glb`, `.obj` | 3D mesh: terrain with buildings on it (needs `[mesh]`) |
+| `epw` | `<site>.epw` | EnergyPlus weather file (typical meteorological year) |
+| `png` | `<site>.png` | The sheet as a raster image |
+| `compare` command | `compare.pdf` | Two to four sites at one shared scale |
+
+The web app also writes `georef.json` and a short README into each ZIP; they
+record the CRS and local origin that the mesh and CAD files use.
+
+## How it works
+
+```
+sce/             the engine (Python package)
+  aoi.py           the square of interest and its single metric CRS
+  site.py          Site: one padded fetch, then clip, analyse, preview, climate, export
+  pipeline.py      fetch layers, compute metrics, write exports (CLI and API share it)
+  registry.py      provider registry with fallback between sources
+  clip.py          clip fetched layers to a smaller square
+  vocab.py         the one vocabulary for land use, building use and height source
+  providers/       one module per data source
+  metrics/         FSI, GSI, streets, land use, terrain, climate, access
+  export/          one writer per output format
+  report/          the A3 sheet and compare sheet
+  cli.py           the `sce` command
+api/main.py      FastAPI: Clerk JWT auth, SSE /api/load, analyse, preview, climate, export
+web/             Next.js 16 app: MapLibre map, panels, charts, sun path and wind rose
+tests/           unit (offline), meta (contracts), live (network, opt-in)
 ```
 
-Two to four sites on one A3 sheet, every figure-ground drawn at the same scale
-so the difference in grain is legible before any number is read. A smaller site
-gets white margin rather than a zoom, because the margin is honest.
+A web request flows like this. The browser asks `/api/load` for a padded area
+around the square; the API builds an `sce.Site`, which asks the registry for each
+layer, and the registry tries providers in rank order until one has coverage.
+Moving or resizing the square inside that area calls `analyse` and `preview`,
+which clip the loaded layers and recompute in under a second. Download calls
+`export`, which runs the chosen writers and zips the files. The CLI uses the same
+pipeline without the web layers.
 
-| | Tashkent | London | Riyadh |
-|---|---|---|---|
-| Orientation order | 0.06 | 0.11 | 0.82 |
-| Mean segment length | 52 m | 27 m | 78 m |
-| Median footprint | 127 m² | 144 m² | 453 m² |
-| Street length density | 33.5 km/km² | 62.2 km/km² | 28.3 km/km² |
+API endpoints (all under `/api`): `GET /health`, `POST /load` (server-sent
+events with progress), `POST /analyse`, `POST /preview`, `POST /climate`,
+`POST /export`. The first placement takes about a minute when nothing is cached.
 
-Riyadh's rigid grid returning 0.82 against London's medieval 0.11 is the
-orientation metric doing exactly what it should.
+Vocabulary shared with the web app is generated, not duplicated:
+`python -m sce.vocab --ts > web/lib/vocab.generated.ts`.
 
-There is no composite score, and a test enforces that no row ever declares a
-preferred direction. A steeper site is not a worse site. Weighting these
-against one another is the client's judgement on a particular project, and
-burying it in a number nobody can argue with would be worth less than the
-refusal.
+### Notes on method
 
-## What it does that the alternatives do not
+- **Projection.** One metric CRS is chosen per site: UTM from the centroid, or
+  an equal-area projection when the site crosses a zone boundary or sits above
+  80 degrees latitude. Every metric rejects geographic (degree) input, and a
+  test asserts it.
+- **Heights are labelled by source.** Building heights come from OSM `height` or
+  `levels` tags (storeys times 3 m), with gaps measured from LiDAR in England. Where
+  OSM heights cover under 40% of footprints, FSI is derived from GHSL and says
+  so; where nothing is available it is withheld. The Rhino model draws the same
+  line: known heights become solids, the rest stay flat.
+- **Terrain is a surface model.** Copernicus GLO-30 includes rooftops and tree
+  canopy. Slope is computed after reprojecting to a metre grid, never on degrees.
+- **Footprints are unioned, not summed**, so overlapping traced buildings cannot
+  push ground space index above 1.0.
+- **Parcels are not open globally.** Block area, from polygonising the street
+  network, is the proxy.
+- **Street orientation order** follows Boeing (2019), normalised to 0 to 1.
+- **Climate is regional.** ERA5 snaps to a grid near 3 km; the sheet records the
+  offset to the grid point used.
 
-Firms already buy CAD extracts, run browser-based massing analysis, or spend an
-analyst-day per bid in QGIS. This does something narrower and more repeatable.
+## Deployment
 
-- **Works everywhere, not just where a vendor has coverage.** Same command in
-  Tashkent as in London.
-- **Prints its own provenance.** Every sheet carries the projection, the sources,
-  their licences and the date each was retrieved, plus the commit that drew it.
-- **Refuses to guess, and says which source it fell back to.** Where OpenStreetMap
-  building heights cover less than 40% of footprints, floor space index is
-  derived from the Global Human Settlement Layer instead and labelled as such on
-  the sheet, with the coverage that triggered the fallback. Where neither is
-  available it is withheld. The Rhino model draws the same distinction in
-  geometry: buildings with a known height become solids, the rest stay flat
-  curves, so a designer can see at a glance which heights are real.
-- **Is a pipeline, not a picture.** The dossier and GeoPackage carry everything
-  the drawing shows, so the output is an input to something else.
-- **No composite score.** The compare mode normalises but does not rank.
-  Weights belong to the client, not the tool.
+`vercel.json` deploys the repo as one Vercel project using Vercel Services: `web/`
+as the Next.js service and `api/main.py` as the Python service, with `/api/*`
+routed to Python and everything else to Next.js. Access is private through
+[Clerk](https://clerk.com) with sign-up set to Restricted (invitation only); the
+API verifies the Clerk session token on every call. Environment variables and
+step-by-step setup are in [web/README.md](web/README.md#deploy).
 
-## Notes on method
-
-**Projection.** One metric CRS is chosen once per site and stamped on the area of
-interest: UTM from the centroid, or a centroid-centred equal-area projection when
-the site crosses a zone boundary or sits above 80° latitude. Every metric calls a
-guard that rejects geographic input, and a test asserts that every registered
-metric raises on degrees. A 1 km site measures exactly 4,000,000 m² at 60° north,
-where a degrees-based buffer would be visibly wrong.
-
-**Terrain is a surface model, not bare earth.** Copernicus GLO-30 includes
-rooftops and tree canopy. That is immaterial for a greenfield site and material
-in a dense city, so the sheet says which it is. Elevation windows are read by
-HTTP range request and reprojected to a square metre grid *before* slope is
-computed; slope on a raw geographic raster is the invisible version of the
-degrees-as-metres error.
-
-**Footprint areas are unioned, not summed.** Overlapping traced footprints would
-otherwise push ground space index above 1.0. Land use classes are allocated
-disjointly for the same reason, so the bar is a true partition of the site.
-
-**Parcel grain is not open globally.** Block area, derived by polygonising the
-street network, is the proxy. Blocks clipped by the frame are excluded.
-
-**Street orientation order** follows Boeing (2019), normalised to 0–1 so a
-perfect grid reads 1.0. The entropy agrees with osmnx's own implementation to
-0.0007 nats.
-
-**Climate is regional, not site microclimate.** ERA5 snaps to a grid near 3 km;
-the sheet records the offset between the site and the grid point actually used.
-
-## Install
+## Testing
 
 ```bash
-pip install -e ".[dev]"            # CLI + tests
-pip install -e ".[rhino,mesh,web]" # .3dm, .glb/.obj, and the web API
+pytest                      # about 457 offline tests, no network
+pytest -m live              # opt-in tests against the real data services
+ruff check . && ruff format --check .
+
+cd web
+npm run typecheck && npm run lint && npm test && npm run build
 ```
 
-Pure pip on Python 3.12–3.14. No conda, no system GDAL.
+Metrics are checked against analytically known answers rather than snapshots: a
+perfect grid must give orientation order 1.0, overlapping squares must give the
+union area, a 1:20 plane must give 2.862 degrees. Live tests assert physical
+bounds (Riyadh is dry, London needs heating), skip when a host throttles, and
+run weekly in CI. CI (`.github/workflows/ci.yml`) runs pytest and ruff on Python
+3.12 to 3.14, and the web checks on Node 24.
 
-## Tests
+## Limitations
 
-```bash
-pytest
-```
+- **Planning constraints and measured LiDAR heights are England only.** Elsewhere
+  those layers are absent and the sheet says so.
+- **Data quality follows OpenStreetMap.** Over much of Central Asia and the Gulf
+  OSM land use is sparse; the sheet shows the unmapped share and puts ESA
+  WorldCover beside it. Building heights are often missing worldwide, hence the
+  fallbacks above.
+- **Open-Meteo's free tier is non-commercial.** Check its terms before using the
+  climate layer in paid work.
+- **Climate is regional ERA5, not site microclimate.** Coastal and mountain sites
+  are the weakest cases.
+- **FABDEM is never fetched for you.** It is published as whole 10-degree
+  archives, so the provider reads tiles you have downloaded and licensed.
+- **Size limits.** The CLI refuses a radius above 5 km without `--force`; the web
+  app limits the square to 2 km wide.
+- **Loaded sites are cached per server instance.** On serverless a request may
+  land on a different instance; the API then answers 409 and the UI reloads the
+  site.
 
-299 tests, zero network. Metrics are checked against analytically known answers
-rather than snapshots: a synthetic perfect grid must return orientation order
-exactly 1.0, two overlapping squares must produce the union area, a plane at
-exactly 1:20 must return 2.862°, and on a perfect grid the ten-minute walking
-area is a diamond rather than a circle, so the reach ratio is exactly 2/π.
+## Contributing
 
-```bash
-pytest -m live
-```
-
-A further 14 tests hit the real interfaces and are excluded from normal runs. A
-weekly job runs them so the coverage table above is machine-checked rather than
-asserted. They assert physical bounds, not fixed numbers: Riyadh must read as
-dry, London must need heating and Riyadh cooling, elevation must land in the
-right range, and UK constraint geometry must actually fall inside the requested
-site. They skip rather than fail when a host throttles the run, because a
-weekly job that cries wolf is one nobody reads.
-
-## Adding a provider
-
-The provider seam is the point of the architecture: a data source declares its
-layer, licence and rank, says where on earth it is available, and returns
-geometry already in the site's metric projection. The registry does the rest,
-including falling through when one source is throttled or has no coverage.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contract and the traps it exists
-to prevent.
-
-## Licences
-
-Every source is free to use. Two conditions matter and both are enforced in
-code: the GeoPackage and DXF exports carry OpenStreetMap-derived geometry and
-are therefore subject to ODbL share-alike, and any non-commercial source is
-skipped unless explicitly opted into, with its licence printed on the sheet.
-See [ATTRIBUTION.md](ATTRIBUTION.md), which is generated from the provider
-registry rather than maintained by hand.
-
-The MIT licence in [LICENSE](LICENSE) covers this source code only. Data the
-tool retrieves carries its own terms, and some of those are share-alike.
-
-## Web site picker
-
-A private web interface lives in `api/` (FastAPI) and `web/` (Next.js, MapLibre,
-Clerk). Drag a square on the map, see the analysis update as you move it, preview
-buildings coloured by where their height came from, and download every format as
-one ZIP. The first placement fetches a padded area around the square (about a
-minute when nothing is cached); moving or resizing within it re-analyses in
-under a second. See [web/README.md](web/README.md) to run it locally;
-`vercel.json` deploys both halves as one Vercel project.
-
-In England, building heights missing from OpenStreetMap are measured from the
-Environment Agency's 1 m LiDAR surface and terrain models (Open Government
-Licence), so FSI rests on measured heights rather than a 100 m satellite average.
-
-OSM queries fall back across Overpass instances (`SCE_OVERPASS_URLS`), because
-the main public server regularly answers "at capacity".
-
-## Roadmap
-
-Global Wind Atlas for coastal and mountain sites where ERA5 is too coarse.
-Population density from the Global Human Settlement Layer. Configurational
-street metrics via momepy. Speckle export.
-
-Bare-earth terrain is available now via `--dtm fabdem`, but the tiles are not
-fetched: FABDEM is published as whole 10-degree archives with no windowed read
-and no documented interface, so the provider reads tiles you have downloaded
-and accepted the licence for, and tells you exactly where to get them. It is
-CC BY-NC-SA, so it is never the default, and using it prints a non-commercial
-notice on the sheet.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the provider, metric and export
+contracts and the traps they exist to prevent.
