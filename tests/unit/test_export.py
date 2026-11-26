@@ -233,6 +233,27 @@ def test_gpkg_multipolygon_and_mixed_types(tmp_path, aoi):
     assert back.geometry.iloc[1].equals(box(9, 9, 10, 10))
 
 
+def test_gpkg_polygon_plus_multipolygon_is_promoted(tmp_path, aoi):
+    import pyogrio
+    from shapely.geometry import LineString, MultiPolygon
+
+    multi = MultiPolygon([box(0, 0, 1, 1), box(5, 5, 6, 6)])
+    gdf = gpd.GeoDataFrame({"k": [1, 2]}, geometry=[multi, box(9, 9, 10, 10)], crs=aoi.crs)
+    out = _write(tmp_path, {"m": gdf})
+    assert pyogrio.read_info(out, layer="m")["geometry_type"] == "MultiPolygon"
+    back = gpd.read_file(out, layer="m")
+    assert back.geometry.iloc[1].equals(MultiPolygon([box(9, 9, 10, 10)]))
+
+    mixed = gpd.GeoDataFrame(
+        {"k": [1, 2]}, geometry=[box(0, 0, 1, 1), LineString([(0, 0), (1, 1)])], crs=aoi.crs
+    )
+    out2 = tmp_path / "mixed.gpkg"
+    from sce.export.gpkg_writer import write_layers
+
+    write_layers(out2, {"x": mixed})
+    assert pyogrio.read_info(out2, layer="x")["geometry_type"] == "Unknown"
+
+
 def test_gpkg_non_ascii_text(tmp_path, aoi):
     gdf = gpd.GeoDataFrame(
         {"name": ["Zürich", "東京", "Ōsaka \u2013 café"]}, geometry=[box(0, 0, 1, 1)] * 3, crs=aoi.crs

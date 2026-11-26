@@ -96,6 +96,21 @@ def _cell(v: Any) -> Any:
     return str(v)
 
 
+_MULTI_OF = {0: (4, shapely.MultiPoint), 1: (5, shapely.MultiLineString), 3: (6, shapely.MultiPolygon)}
+
+
+def _promote_to_multi(geoms: np.ndarray) -> np.ndarray:
+    """A layer mixing X and MultiX becomes all MultiX, as pyogrio's `promote_to_multi` did."""
+    kinds = {int(shapely.get_type_id(g)) for g in geoms if g is not None}
+    out = geoms.copy()
+    for single, (multi, wrap) in _MULTI_OF.items():
+        if single in kinds and multi in kinds:
+            for i, g in enumerate(geoms):
+                if g is not None and shapely.get_type_id(g) == single:
+                    out[i] = wrap([g])
+    return out
+
+
 def _geom_type_name(geoms: np.ndarray) -> str:
     kinds = {int(shapely.get_type_id(g)) for g in geoms if g is not None}
     if len(kinds) == 1 and (k := next(iter(kinds))) in _TYPE_NAMES:
@@ -190,7 +205,7 @@ def _write_table(con: sqlite3.Connection, name: str, df: pd.DataFrame, srs_ids: 
     geoms = blobs = None
     srs_id = 0
     if is_geo:
-        geoms = np.asarray(df.geometry.values, dtype=object)
+        geoms = _promote_to_multi(np.asarray(df.geometry.values, dtype=object))
         srs_id = _srs_id(df, srs_ids)
         blobs = _blobs(geoms, srs_id)
     names = ["fid"] + ([_q(GEOM_COLUMN)] if is_geo else []) + [_q(str(c)) for c in cols]
