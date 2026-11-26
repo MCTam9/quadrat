@@ -25,7 +25,17 @@ def generate_attribution(registry, path: str | Path) -> Path:
     for provider in registry.providers():
         by_licence[provider.licence or "Unknown licence"].append(provider)
 
-    lines = ["# Attribution", "", "Data sources and licences used by this tool.", ""]
+    lines = [
+        "# Attribution",
+        "",
+        "Data sources and licences used by this tool. Generated from the provider",
+        "registry by `sce attribution`; do not edit by hand.",
+        "",
+        "The tool's own source code is MIT (see LICENSE). That is separate from, and does",
+        "not override, the terms below. Where they conflict, the data licence governs the",
+        "data.",
+        "",
+    ]
 
     has_odbl = any(_is_odbl(lic) for lic in by_licence)
     if has_odbl:
@@ -46,7 +56,8 @@ def generate_attribution(registry, path: str | Path) -> Path:
         lines.append("")
         for provider in sorted(by_licence[licence], key=lambda p: (p.layer, p.name)):
             commercial = "commercial use permitted" if provider.commercial_ok else "non-commercial only"
-            lines.append(f"- **{provider.name}** (layer: `{provider.layer}`) — {commercial}")
+            credit = f" — {provider.credit}" if getattr(provider, "credit", "") else ""
+            lines.append(f"- **{provider.name}** (layer: `{provider.layer}`) — {commercial}{credit}")
         lines.append("")
 
     path.write_text("\n".join(lines).rstrip() + "\n")

@@ -13,6 +13,7 @@ from . import (  # noqa: F401
     height_ea_lidar,
     height_ghsl,
     landcover_worldcover,
+    openfreemap_tiles,
     osm_amenities,
     osm_buildings,
     osm_landuse,

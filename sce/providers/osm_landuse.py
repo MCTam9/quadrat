@@ -31,6 +31,24 @@ def _classify(row: pd.Series) -> str:
     return landuse_class(row)
 
 
+def summarise_landuse(result: LayerResult, aoi) -> LayerResult:
+    """Coverage = union area of the polygons over the square's area."""
+    geoms = [] if result.gdf is None else [make_valid(g) for g in result.gdf.geometry if g is not None]
+    union = unary_union(geoms) if geoms else None
+    area = float(union.area) if union is not None else 0.0
+    coverage = min(area / float(aoi.area_m2), 1.0) if aoi.area_m2 else 0.0
+    low = coverage < 0.5
+    findings = (
+        [
+            f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
+            "the remainder is genuinely unmapped, not implied to be any particular class"
+        ]
+        if low
+        else []
+    )
+    return replace(result, coverage=coverage, degraded=low, findings=findings)
+
+
 class OsmLanduseProvider(Provider):
     name = "osm_landuse"
     layer = "landuse"
@@ -80,21 +98,7 @@ class OsmLanduseProvider(Provider):
         )
 
     def summarise(self, result: LayerResult, aoi) -> LayerResult:
-        """Coverage = union area of the polygons over the square's area."""
-        geoms = [] if result.gdf is None else [make_valid(g) for g in result.gdf.geometry if g is not None]
-        union = unary_union(geoms) if geoms else None
-        area = float(union.area) if union is not None else 0.0
-        coverage = min(area / float(aoi.area_m2), 1.0) if aoi.area_m2 else 0.0
-        low = coverage < 0.5
-        findings = (
-            [
-                f"only {coverage:.0%} of the AOI carries a landuse/leisure/natural tag in OSM; "
-                "the remainder is genuinely unmapped, not implied to be any particular class"
-            ]
-            if low
-            else []
-        )
-        return replace(result, coverage=coverage, degraded=low, findings=findings)
+        return summarise_landuse(result, aoi)
 
 
 REGISTRY.register(OsmLanduseProvider())

@@ -88,6 +88,9 @@ class Provider:
     licence: str = ""
     rank: int = 100
     commercial_ok: bool = True
+    # Credit line some data licences require next to the name (e.g. OpenMapTiles).
+    # Written into ATTRIBUTION.md beside the provider.
+    credit: str = ""
 
     def available(self, aoi) -> bool:
         """True when this provider can serve this AOI (e.g. inside GB only)."""
