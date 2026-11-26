@@ -261,7 +261,7 @@ export function Picker() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${r.formats.length === 1 && r.formats[0] === "epw" && !r.report ? "weather" : "site"}-${s.lat.toFixed(4)}_${s.lon.toFixed(4)}_${Math.round(s.halfWidthM * 2)}m.zip`;
+      a.download = `${r.formats.length === 1 && r.formats[0] === "epw" && !r.report ? "quadrat-weather" : "quadrat"}-${s.lat.toFixed(4)}_${s.lon.toFixed(4)}_${Math.round(s.halfWidthM * 2)}m.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();

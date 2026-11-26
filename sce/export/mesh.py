@@ -264,7 +264,7 @@ def write_obj(path: str | Path, layers: dict[str, LayerResult], aoi) -> Path:
     mtl_path = path.with_suffix(".mtl")
     ox, oy = local_origin(aoi)
     lines = [
-        "# Site Context Report mesh. Z-up: x=east, y=north, z=up (metres).",
+        "# Quadrat mesh. Z-up: x=east, y=north, z=up (metres).",
         f"# Vertices are relative to local origin easting={ox} northing={oy} in {aoi.epsg};",
         "# elevation is absolute.",
         f"mtllib {mtl_path.name}",

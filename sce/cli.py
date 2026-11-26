@@ -56,7 +56,7 @@ def _fetch_layers(aoi: AOI, cache, only, override, allow_nc: bool) -> dict:
 @click.group()
 @click.version_option(__version__, prog_name="sce")
 def main() -> None:
-    """Site Context Report - urban morphology, terrain, climate and access, anywhere."""
+    """Quadrat - urban morphology, terrain, climate and access, anywhere."""
 
 
 @main.command()

@@ -9,7 +9,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Site Context Report (`sce`): coordinates and a radius anywhere on earth to an A3
+Quadrat (Python package `sce`): coordinates and a radius anywhere on earth to an A3
 sheet plus machine-readable data covering urban morphology, terrain, climate and
 access.
 

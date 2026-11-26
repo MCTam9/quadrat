@@ -1,4 +1,4 @@
-# Site picker (web)
+# Quadrat web app
 
 Next.js 16 frontend for the `sce` API: search a place, drag and resize a square on a MapLibre map, watch live site
 analysis, preview buildings coloured by height provenance, read climate charts with sun path and wind rose overlays

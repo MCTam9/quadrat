@@ -1,13 +1,17 @@
-# Site Context Report
+# Quadrat
 
-Site Context Report (`sce`, the site context engine) takes a square of ground
-anywhere on earth and describes it from open data: buildings, streets, land use,
+Quadrat takes a square of ground anywhere on earth and describes it from open
+data: buildings, streets, land use,
 terrain, land cover, climate and, in Great Britain, planning constraints. It
 computes urban metrics (floor space index, ground space index, street and block
 structure, land use mix, slope, degree days, solar and wind) and writes them out
 as an A3 PDF sheet and as CAD and GIS files. It is aimed at architects, urban
 designers and planners who need a quick, repeatable site analysis at the start of
 a project. Everything it reads is free to use and needs no API keys.
+
+The name is the ecologist's quadrat: a square frame laid on the ground to sample
+what is inside it. The Python package and command line tool are called `sce`
+(the site context engine), and the PDF it produces is the site context report.
 
 It ships three ways to use it:
 

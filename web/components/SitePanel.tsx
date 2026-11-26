@@ -105,7 +105,8 @@ export function SitePanel(p: Props) {
       <div id="site-panel-body" className="flex min-h-0 flex-1 flex-col">
         {!sq ? (
           <div className="p-4 text-sm leading-relaxed text-graphite">
-            <p className="wide mb-2 text-lg font-bold text-ink">Pick a site</p>
+            <p className="wide text-2xl font-bold text-ink">Quadrat</p>
+            <p className="mb-2 mt-3 font-semibold text-ink">Pick a site</p>
             Search for a place, then click the map to drop a square. Drag the centre to move it and the red corner grips to resize.
             Live analysis and a building preview appear before you download anything.
           </div>
