@@ -24,6 +24,9 @@ dependencies = [
   "pyarrow>=17",
   "ezdxf>=1.3",
   "click>=8.1",
+  # Decodes OpenFreeMap vector tiles (sce/providers/openfreemap_tiles.py). Core, not `web`:
+  # the tile providers are in the registry chain for the CLI as well.
+  "mapbox-vector-tile>=2.1",
 ]
 
 [project.optional-dependencies]

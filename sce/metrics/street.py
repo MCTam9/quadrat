@@ -73,6 +73,31 @@ def _bearing_histogram(graph: nx.MultiDiGraph, num_bins: int = NUM_BINS) -> tupl
     return bin_counts, bin_centers
 
 
+def _without_graph(streets: LayerResult, area_km2: float) -> dict[str, Any]:
+    """Metrics for streets that came without a graph (map-tile drafts and fallbacks).
+
+    Lines in vector tiles are not noded at junctions, so intersections, dead ends and
+    orientation cannot be computed and are reported as not available (None). Length
+    needs no graph and is measured from the lines.
+    """
+    gdf = streets.gdf
+    length_km = float(gdf.geometry.length.sum()) / 1000.0 if gdf is not None and len(gdf) else 0.0
+    return {
+        "intersection_count": None,
+        "intersection_density_km2": None,
+        "street_length_km": length_km,
+        "street_length_density_km_km2": length_km / area_km2 if area_km2 else None,
+        "segment_length_mean_m": None,
+        "segment_length_median_m": None,
+        "dead_end_share": None,
+        "orientation_entropy_nats": None,
+        "orientation_order_phi": None,
+        "orientation_bins": [0.0] * NUM_BINS,
+        "orientation_bin_centers_deg": list(np.linspace(0, 360, NUM_BINS, endpoint=False) + 5.0),
+        "graph_available": False,
+    }
+
+
 def street_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     streets = layers["streets"]
     # Check every CRS we were handed before demanding anything else. A provider
@@ -83,10 +108,9 @@ def street_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     graph = (streets.data or {}).get("graph")
     if graph is not None:
         assert_metric_crs(graph.graph.get("crs"), where="street_metrics[graph]")
-    if graph is None:
-        raise ValueError("street_metrics requires layers['streets'].data['graph']")
-
     area_km2 = aoi.area_m2 / 1e6
+    if graph is None:
+        return _without_graph(streets, area_km2)
     result: dict[str, Any] = {}
 
     if graph.number_of_nodes() == 0 or graph.number_of_edges() == 0:

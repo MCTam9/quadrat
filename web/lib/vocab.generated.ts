@@ -29,6 +29,7 @@ export const HEIGHT_SOURCE = [
   { id: "height", label: "Measured (height tag)", colour: "#2563eb" },
   { id: "lidar", label: "Measured (LiDAR)", colour: "#1d4ed8" },
   { id: "levels", label: "From storeys (levels \u00d7 3 m)", colour: "#0d9488" },
+  { id: "tiles", label: "From map tiles (approximate)", colour: "#7c3aed" },
   { id: "unknown", label: "No height data", colour: "#fecdd3" },
 ] as const;
 export type HeightSourceId = (typeof HEIGHT_SOURCE)[number]["id"];

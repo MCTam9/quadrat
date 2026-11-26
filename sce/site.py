@@ -45,6 +45,8 @@ log = logging.getLogger("sce.site")
 Fetch = Callable[..., dict[str, LayerResult]]
 # (layer, result or None, milliseconds the layer took)
 LoadCallback = Callable[[str, LayerResult | None, int], None]
+# (layer, map-tile draft, milliseconds since the load began)
+DraftCallback = Callable[[str, LayerResult, int], None]
 
 
 class OutsideSite(ValueError):
@@ -104,18 +106,35 @@ class Site:
         cache: Any = None,
         fetch: Fetch | None = None,
         on_layer: LoadCallback | None = None,
+        on_draft: DraftCallback | None = None,
+        overpass_budget_s: float | None = None,
     ) -> Site:
         """Fetch a padded square around (lon, lat) once. Slow: this is the network step.
 
         Climate is not fetched here (`climate()` does it on demand), and LiDAR is
         fetched only for the requested square plus its context ring.
+
+        `on_draft(layer, result, ms)` receives quick, approximate map-tile versions of
+        buildings, streets, land use and amenities within about two seconds, before the
+        real layers; a draft is never delivered after its real layer. With
+        `overpass_budget_s`, Overpass-backed layers still pending after that many seconds
+        finish from the same tiles (see `pipeline.fetch_layers`).
         """
         outer = AOI.from_point(lon, lat, padded_half_width(half_width_m), name="padded")
         focus = None
         if half_width_m is not None:
             focus_m = min(outer.radius_m or 0.0, half_width_m + CONTEXT_RING_M)
             focus = AOI.from_point(lon, lat, focus_m, name="height-focus", crs=outer.crs)
-        return cls._fetch(outer, cache, fetch, on_layer, focus=focus, layers=pipeline.SITE_LAYERS)
+        return cls._fetch(
+            outer,
+            cache,
+            fetch,
+            on_layer,
+            focus=focus,
+            layers=pipeline.SITE_LAYERS,
+            on_draft=on_draft,
+            overpass_budget_s=overpass_budget_s,
+        )
 
     @classmethod
     def for_square(
@@ -134,6 +153,8 @@ class Site:
         *,
         focus: AOI | None = None,
         layers: tuple[str, ...] | None = None,
+        on_draft: DraftCallback | None = None,
+        overpass_budget_s: float | None = None,
     ) -> Site:
         from .cache import Cache
 
@@ -151,7 +172,16 @@ class Site:
             if on_layer is not None:
                 on_layer(name, result, ms)
 
+        def draft(name: str, result: LayerResult) -> None:
+            if on_draft is not None:
+                on_draft(name, result, round((time.perf_counter() - t0) * 1000))
+
         kwargs: dict[str, Any] = {"on_layer": report, "timings": timings}
+        # Only passed when asked for, so a fetcher written before drafts existed still works.
+        if on_draft is not None:
+            kwargs["on_draft"] = draft
+        if overpass_budget_s is not None:
+            kwargs["overpass_budget_s"] = overpass_budget_s
         if layers is not None:
             kwargs["only"] = list(layers)
         if focus is not None:

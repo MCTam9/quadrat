@@ -8,6 +8,9 @@ prints progress.
 from __future__ import annotations
 
 import json
+import logging
+import os
+import threading
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -15,6 +18,8 @@ from typing import Any
 
 from .aoi import AOI
 from .types import LayerResult
+
+log = logging.getLogger("sce.pipeline")
 
 LAYERS = (
     "streets",
@@ -62,6 +67,20 @@ OSM_FEATURE_LAYERS = ("buildings", "landuse", "amenities")
 OSM_GROUPS: tuple[tuple[str, ...], ...] = (("streets",), OSM_FEATURE_LAYERS)
 
 
+DraftCallback = Callable[[str, LayerResult], None]
+
+DEFAULT_OVERPASS_BUDGET_S = 90.0
+
+
+def overpass_budget_s() -> float:
+    """Seconds the Overpass-backed layers get before map tiles stand in (env `SCE_OVERPASS_BUDGET_S`)."""
+    try:
+        v = float(os.environ.get("SCE_OVERPASS_BUDGET_S", DEFAULT_OVERPASS_BUDGET_S))
+    except ValueError:
+        return DEFAULT_OVERPASS_BUDGET_S
+    return v if v > 0 else DEFAULT_OVERPASS_BUDGET_S
+
+
 def fetch_layers(
     aoi: AOI,
     cache: Any,
@@ -73,6 +92,8 @@ def fetch_layers(
     parallel: bool = True,
     timings: dict[str, int] | None = None,
     height_focus: AOI | None = None,
+    on_draft: DraftCallback | None = None,
+    overpass_budget_s: float | None = None,
 ) -> dict[str, LayerResult]:
     """Run every provider chain for the wanted layers.
 
@@ -86,6 +107,17 @@ def fetch_layers(
     same CRS, is what the `building_height` layer is fetched for: LiDAR tiles
     are the slowest request, and only the requested square and its context ring
     need heights.
+
+    Map-tile drafts (parallel runs only). When `on_draft` or `overpass_budget_s` is
+    given, the OpenFreeMap tiles for the AOI are fetched once, at the very start, in
+    their own thread (`sce.providers.openfreemap_tiles.tile_results`). As soon as they
+    decode, `on_draft(name, result)` fires for each of buildings, streets, landuse and
+    amenities that has not completed yet; a draft is never delivered after its layer's
+    real result, and a real result never replaces one that was already delivered.
+    `overpass_budget_s` is the deadline for the Overpass-backed layers: layers still
+    pending when it passes finish from the same tile results (through the registry, as
+    the `tiles_*` provider, with a note), and the late Overpass answer is discarded. If
+    the tiles themselves are unavailable the Overpass layers are simply waited for.
     """
     import sce.providers  # noqa: F401  - registers providers
 
@@ -94,6 +126,24 @@ def fetch_layers(
     override = override or {}
     wanted = [layer for layer in (list(only) if only else list(LAYERS)) if REGISTRY.chain(layer, aoi)]
     results: dict[str, LayerResult | None] = {}
+    t0 = time.perf_counter()
+    lock = threading.Lock()
+    # Layers whose final result has been delivered. Checked under `lock` by both a
+    # draft (so it never lands after the real layer) and a late worker (so an
+    # abandoned Overpass answer never replaces the tile fallback).
+    completed: set[str] = set()
+    abandoned: set[str] = set()
+
+    def finish(layer: str, result: LayerResult | None, started: float) -> None:
+        with lock:
+            if layer in completed:
+                return
+            completed.add(layer)
+            results[layer] = result
+            if timings is not None:
+                timings[layer] = round((time.perf_counter() - started) * 1000)
+        if on_layer is not None:
+            on_layer(layer, result)
 
     def one(layer: str) -> None:
         started = time.perf_counter()
@@ -104,38 +154,83 @@ def fetch_layers(
             override=override.get(layer),
             allow_non_commercial=allow_nc,
         )
-        results[layer] = result
-        if timings is not None:
-            timings[layer] = round((time.perf_counter() - started) * 1000)
-        if on_layer is not None:
-            on_layer(layer, result)
+        finish(layer, result, started)
 
-    if parallel:
-        from concurrent.futures import ThreadPoolExecutor
-
+    if not parallel:
+        for layer in wanted:
+            one(layer)
+    else:
         osm = {layer for group in OSM_GROUPS for layer in group}
         groups = [[layer for layer in group if layer in wanted] for group in OSM_GROUPS]
         groups = [g for g in groups if g]
         independent = [layer for layer in wanted if layer not in osm]
+        errors: list[Exception] = []
 
         def run_group(group: list[str]) -> None:
-            first: Exception | None = None
             for layer in group:
+                if layer in abandoned:
+                    continue
                 try:
                     one(layer)
                 except Exception as exc:
-                    first = first or exc
-            if first is not None:
-                raise first
+                    errors.append(exc)
 
-        with ThreadPoolExecutor(max_workers=len(groups) + len(independent)) as pool:
-            futures = [pool.submit(run_group, g) for g in groups]
-            futures += [pool.submit(one, layer) for layer in independent]
-            for f in futures:
-                f.result()
-    else:
-        for layer in wanted:
-            one(layer)
+        def draft_worker() -> None:
+            from .providers.openfreemap_tiles import TILE_LAYERS, tile_results
+
+            try:
+                tiles = tile_results(aoi, cache)
+            except Exception as exc:
+                log.info("map-tile drafts unavailable: %s", exc)
+                return
+            for layer in TILE_LAYERS:
+                if layer not in wanted or override.get(layer) or layer not in tiles:
+                    continue
+                with lock:
+                    if layer in completed:
+                        continue
+                    try:
+                        if on_draft is not None:
+                            on_draft(layer, tiles[layer])
+                    except Exception:
+                        log.warning("draft callback failed for %s", layer, exc_info=True)
+
+        def spawn(fn: Callable[..., None], *args: Any, name: str) -> threading.Thread:
+            # Daemon threads: an abandoned Overpass request must not hold the process open.
+            t = threading.Thread(target=fn, args=args, name=name, daemon=True)
+            t.start()
+            return t
+
+        use_tiles = on_draft is not None or overpass_budget_s is not None
+        if use_tiles and not override.keys() & {"buildings", "streets", "landuse", "amenities"}:
+            spawn(draft_worker, name="sce-tile-drafts")
+        osm_threads = [(g, spawn(run_group, g, name=f"sce-{g[0]}")) for g in groups]
+        others = [spawn(one, layer, name=f"sce-{layer}") for layer in independent]
+
+        deadline = None if overpass_budget_s is None else t0 + overpass_budget_s
+        for group, thread in osm_threads:
+            thread.join(None if deadline is None else max(0.0, deadline - time.perf_counter()))
+            if not thread.is_alive():
+                continue
+            # Over budget: finish what is pending from the tiles, then stop waiting for this group.
+            unresolved = False
+            for layer in group:
+                with lock:
+                    if layer in completed:
+                        continue
+                fallback = _tiles_fallback(layer, aoi, cache, REGISTRY, overpass_budget_s)
+                if fallback is None:
+                    unresolved = True
+                    continue
+                with lock:
+                    abandoned.add(layer)
+                finish(layer, fallback, t0)
+            if unresolved:
+                thread.join()  # some layer has no tiles to stand in: Overpass is all there is
+        for t in others:
+            t.join()
+        if errors:
+            raise errors[0]
 
     layers = {layer: results[layer] for layer in wanted if results.get(layer) is not None}
     # Where a per-building-resolution height raster exists (EA LiDAR in England),
@@ -147,6 +242,18 @@ def fetch_layers(
     if timings is not None:
         timings["heights"] = round((time.perf_counter() - started) * 1000)
     return enriched
+
+
+def _tiles_fallback(layer: str, aoi: AOI, cache: Any, registry: Any, budget_s: float) -> LayerResult | None:
+    """The map-tile result for `layer` through the registry (the `tiles_*` provider), or None."""
+    from .providers.openfreemap_tiles import TILE_LAYERS
+
+    if layer not in TILE_LAYERS:
+        return None
+    result = registry.fetch(layer, aoi, cache, override=f"tiles_{layer}")
+    if result is not None:
+        result.notes.append(f"Overpass did not answer within {budget_s:g} s; map tiles stand in")
+    return result
 
 
 def _gpkg(out: Path, name: str, aoi: AOI, layers: dict, metrics: dict) -> list[Path]:

@@ -62,22 +62,12 @@ def access_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
     graph = (streets.data or {}).get("graph")
     if graph is not None:
         assert_metric_crs(graph.graph.get("crs"), where="access_metrics[graph]")
-    if graph is None:
-        raise ValueError("access_metrics requires layers['streets'].data['graph']")
 
     result: dict[str, Any] = {}
     centre = aoi.geometry.centroid
     cx, cy = centre.x, centre.y
 
-    if graph.number_of_nodes() == 0:
-        result["walk_reach_ratio_10min"] = None
-        result["amenity_category_count_10min"] = None
-    else:
-        centre_node = _nearest_node(graph, cx, cy)
-        result["walk_reach_ratio_10min"] = (
-            _reach_ratio(graph, centre_node) if centre_node is not None else None
-        )
-
+    def category_count() -> int | None:
         amenities = layers.get("amenities")
         categories: set[str] = set()
         if amenities is not None and amenities.gdf is not None and len(amenities.gdf):
@@ -87,9 +77,21 @@ def access_metrics(layers: dict[str, LayerResult], aoi: AOI) -> dict[str, Any]:
             col = "category" if "category" in nearby.columns else None
             if col is not None:
                 categories = set(nearby[col].dropna().astype(str))
-        result["amenity_category_count_10min"] = (
-            len(categories) if categories or amenities is not None else None
+        return len(categories) if categories or amenities is not None else None
+
+    if graph is None:
+        # Streets without a graph (map tiles): reach is not available, categories need no graph.
+        result["walk_reach_ratio_10min"] = None
+        result["amenity_category_count_10min"] = category_count()
+    elif graph.number_of_nodes() == 0:
+        result["walk_reach_ratio_10min"] = None
+        result["amenity_category_count_10min"] = None
+    else:
+        centre_node = _nearest_node(graph, cx, cy)
+        result["walk_reach_ratio_10min"] = (
+            _reach_ratio(graph, centre_node) if centre_node is not None else None
         )
+        result["amenity_category_count_10min"] = category_count()
 
     transit = layers.get("amenities")
     nearest_transit_m: float | None = None

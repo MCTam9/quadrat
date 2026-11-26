@@ -6,6 +6,8 @@ describe("classifySource", () => {
     expect(classifySource("height", 12)).toBe("height");
     expect(classifySource("lidar", 18.5)).toBe("lidar");
     expect(classifySource("levels", 9)).toBe("levels");
+    expect(classifySource("tiles", 12)).toBe("tiles");
+    expect(classifySource("tiles", null)).toBe("unknown");
     expect(classifySource("", null)).toBe("unknown");
     expect(classifySource("ghsl", 8)).toBe("unknown");
     expect(classifySource("height", null)).toBe("unknown");
@@ -17,6 +19,10 @@ describe("height source shares", () => {
     const s = parseHeightShares({ height: 0.2, lidar: 0.5, levels: 0.1, unknown: 0.2 });
     expect(s && knownShare(s)).toBeCloseTo(0.8);
     expect(parseHeightShares({ height: 1 })).toBeNull();
+    // map-tile heights count as known, and an analysis that predates the tiles source still parses
+    const t = parseHeightShares({ height: 0, lidar: 0, levels: 0, tiles: 0.6, unknown: 0.4 });
+    expect(t && knownShare(t)).toBeCloseTo(0.6);
+    expect(parseHeightShares({ height: 0.5, lidar: 0, levels: 0, unknown: 0.5 })?.tiles).toBe(0);
     expect(parseHeightShares(undefined)).toBeNull();
   });
   it("falls back to counting preview buildings", () => {

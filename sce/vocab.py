@@ -96,6 +96,58 @@ def landuse_class(tags: dict[str, object]) -> str:
     return "other"
 
 
+# OpenMapTiles (OpenFreeMap vector tiles) source layer -> class value -> land-use class.
+# A value that is absent is skipped: it is not land use (place and admin areas such as
+# "neighbourhood" cover everything and would swamp the real classes).
+OMT_LANDUSE: dict[str, dict[str, str]] = {
+    "landuse": {
+        "residential": "residential",
+        "commercial": "commercial",
+        "retail": "retail",
+        "industrial": "industrial",
+        "railway": "transport",
+        "bus_station": "transport",
+        "school": "civic",
+        "kindergarten": "civic",
+        "college": "civic",
+        "university": "civic",
+        "library": "civic",
+        "hospital": "civic",
+        "pitch": "green_space",
+        "playground": "green_space",
+        "cemetery": "other",
+        "military": "other",
+        "stadium": "other",
+        "garages": "other",
+        "zoo": "other",
+        "theme_park": "other",
+        "quarry": "other",
+    },
+    "landcover": {
+        "grass": "green_space",
+        "wood": "green_space",
+        "farmland": "agriculture",
+        "wetland": "other",
+        "sand": "other",
+        "rock": "other",
+        "ice": "other",
+    },
+    "park": {
+        "park": "green_space",
+        "nature_reserve": "green_space",
+        "national_park": "green_space",
+    },
+    "water": {},  # every water polygon is "water"; see `omt_landuse_class`
+}
+
+
+def omt_landuse_class(layer: str, value: object) -> str | None:
+    """Land-use class for one OpenMapTiles polygon, or None when it is not land use."""
+    if layer == "water":
+        return "water"
+    return OMT_LANDUSE.get(layer, {}).get(str(value))
+
+
 _TAG_VALUE_CLASS: dict[str, str] = {v: c for m in OSM_LANDUSE_TAGS.values() for v, c in m.items()}
 
 
@@ -139,6 +191,7 @@ HEIGHT_SOURCE: tuple[Klass, ...] = (
     Klass("height", "Measured (height tag)", "#2563eb", "#2563eb"),
     Klass("lidar", "Measured (LiDAR)", "#1d4ed8", "#1d4ed8"),
     Klass("levels", "From storeys (levels × 3 m)", "#0d9488", "#0d9488"),  # noqa: RUF001
+    Klass("tiles", "From map tiles (approximate)", "#7c3aed", "#7c3aed"),
     Klass("unknown", "No height data", "#fecdd3", "#fecdd3"),
 )
 HEIGHT_SOURCE_IDS: tuple[str, ...] = tuple(k.id for k in HEIGHT_SOURCE)

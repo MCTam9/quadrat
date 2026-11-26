@@ -12,6 +12,8 @@ export interface LayerEvent {
   geojson?: Partial<Preview>;
   /** True for the follow-up buildings event carrying final heights and uses. */
   update?: boolean;
+  /** True for a quick approximate version from map tiles; the layer's real event replaces it. */
+  draft?: boolean;
 }
 
 export interface ReadyEvent {
