@@ -163,6 +163,7 @@ sce/             the engine (Python package)
   report/          the A3 sheet and compare sheet
   cli.py           the `sce` command
 api/main.py      FastAPI: Clerk JWT auth, SSE /api/load, analyse, preview, climate, export
+api/export.py    /api/export alone, deployed as its own function
 web/             Next.js 16 app: MapLibre map, panels, charts, sun path and wind rose
 tests/           unit (offline), meta (contracts), live (network, opt-in)
 ```
@@ -206,8 +207,10 @@ Vocabulary shared with the web app is generated, not duplicated:
 ## Deployment
 
 `vercel.json` deploys the repo as one Vercel project using Vercel Services: `web/`
-as the Next.js service and `api/main.py` as the Python service, with `/api/*`
-routed to Python and everything else to Next.js. Access is private through
+as the Next.js service and the API as two Python services, with `/api/export`
+routed to `api/export.py`, the rest of `/api/*` to `api/main.py`, and everything
+else to Next.js. Splitting off export keeps the PDF and CAD libraries out of the
+function that serves every interactive request. Access is private through
 [Clerk](https://clerk.com) with sign-up set to Restricted (invitation only); the
 API verifies the Clerk session token on every call. Environment variables and
 step-by-step setup are in [web/README.md](web/README.md#deploy).

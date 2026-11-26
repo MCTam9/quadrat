@@ -72,7 +72,12 @@ With Clerk on, the whole app requires sign-in and shows only `<SignIn/>` at `/si
 ## Deploy
 
 `vercel.json` at the repo root deploys `web/` and the FastAPI app as one project using Vercel Services (beta).
-`/api/*` goes to the Python service and everything else to Next.js.
+The API is two Python services from the same code: `export` (`api/export.py`) takes `/api/export`, `api`
+(`api/main.py`) takes the rest of `/api/*`, and everything else goes to Next.js. Export is the only route that
+needs the PDF and CAD libraries (matplotlib, ezdxf, rhino3dm, trimesh), so the `api` service installs without
+`[rhino,mesh]` and `scripts/trim_site_packages.py --profile site` deletes matplotlib and ezdxf: about 320 MB
+of packages instead of 455 MB, for every interactive request's cold start. Export restores the loaded site
+from the snapshot store.
 
 1. `vercel link` from the repo root (the project is `quadrat`).
 2. Add Clerk from the Vercel Marketplace (`vercel integration add clerk`, free plan). It creates the Clerk
@@ -84,8 +89,8 @@ With Clerk on, the whole app requires sign-in and shows only `<SignIn/>` at `/si
    or `CLERK_AUTHORIZED_PARTIES` (comma-separated origins, checked against the token's `azp` claim) if you use a
    custom Clerk domain or call the API from elsewhere.
    - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` if the build says the Python bundle is too large.
-   - The Python bundle is about 450 MB after `scripts/trim_site_packages.py` (it was ~670 MB before pyogrio and
-     pyarrow were dropped), under Vercel's 500 MB standard limit. The hosted API has no Overture fallback
+   - The `export` service's Python bundle is about 450 MB after `scripts/trim_site_packages.py` (it was ~670 MB
+     before pyogrio and pyarrow were dropped); the `api` service's is smaller (see `--profile site`). The hosted API has no Overture fallback
      (`sce[overture]` is CLI-only); buildings fall back from OSM to map tiles.
    - Optional: `SCE_CORS_ORIGINS` (comma-separated) if the API is called from another origin.
 4. Connect the GitHub repo (`vercel git connect`) so pushes deploy, or run `vercel deploy` for a preview.
