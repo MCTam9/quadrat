@@ -19,7 +19,7 @@ import math
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -257,25 +257,24 @@ class Site:
             }
         )
 
+    def preview_parts(self, square: AOI, layers: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
+        """GeoJSON for `square`, one dict per layer key (`PREVIEW_LAYERS`), JSON-safe.
+
+        `preview()` is these parts merged; the load stream sends the same parts
+        as layers arrive, so the two cannot drift apart.
+        """
+        clipped = self.layers_for(square)
+        raw = _gdf(self.layers.get("buildings"))
+        return {k: jsonable(_part(k, clipped, square, self.outer, raw)) for k in _wanted(layers)}
+
     def preview(self, square: AOI) -> dict[str, Any]:
         """WGS84 GeoJSON for drawing `square` on a web map (JSON-safe)."""
-        layers = self.layers_for(square)
-        gdf = _gdf(layers.get("buildings"))
-        contours, interval = _contours(layers.get("terrain"), square)
-        return jsonable(
-            {
-                "square": {"type": "Feature", "geometry": _geometry(square.geometry_wgs84), "properties": {}},
-                "buildings": _collection(gdf, _building_props),
-                "streets": _collection(_gdf(layers.get("streets")), _street_props),
-                "landuse": _collection(_gdf(layers.get("landuse")), _landuse_props),
-                "contours": _collection(contours, lambda r: {"elevation_m": r.get("elevation_m")}),
-                "contour_interval_m": interval,
-                "constraints": _collection(_gdf(layers.get("constraints")), _constraint_props),
-                "context": _collection(
-                    self._context(square), lambda r: {"height_m": _num(r.get("height_m"))}
-                ),
-            }
-        )
+        out: dict[str, Any] = {
+            "square": {"type": "Feature", "geometry": _geometry(square.geometry_wgs84), "properties": {}}
+        }
+        for part in self.preview_parts(square).values():
+            out.update(part)
+        return out
 
     def climate(self) -> dict[str, Any] | None:
         """Typical-year and monthly climate for the site, or None without climate data."""
@@ -343,19 +342,71 @@ class Site:
         )
         return [readme, *files]
 
-    def _context(self, square: AOI) -> Any:
-        """Buildings in a ring around the square, for context massing."""
-        b = _gdf(self.layers.get("buildings"))
-        if b is None or not len(b):
-            return None
-        ring = square.geometry.buffer(CONTEXT_RING_M, join_style="mitre").difference(square.geometry)
-        ring = ring.intersection(self.outer.geometry)
-        clipped = b[b.intersects(ring)].clip(ring)
-        keep = [c for c in ("height_m",) if c in clipped.columns]
-        return clipped[[*keep, clipped.geometry.name]]
-
 
 # -- helpers (private) ---------------------------------------------------------
+
+
+PREVIEW_LAYERS = ("streets", "buildings", "landuse", "terrain", "constraints")
+
+
+def _wanted(layers: Iterable[str] | None) -> list[str]:
+    wanted = list(PREVIEW_LAYERS if layers is None else layers)
+    return [k for k in wanted if k in PREVIEW_LAYERS]
+
+
+def _part(
+    name: str, layers: dict[str, LayerResult], square: AOI, outer: AOI, raw_buildings: Any
+) -> dict[str, Any]:
+    """The preview keys one layer contributes, from layers already clipped to `square`."""
+    if name == "buildings":
+        return {
+            "buildings": _collection(_gdf(layers.get("buildings")), _building_props),
+            "context": _collection(_context(raw_buildings, square, outer), _context_props),
+        }
+    if name == "streets":
+        return {"streets": _collection(_gdf(layers.get("streets")), _street_props)}
+    if name == "landuse":
+        return {"landuse": _collection(_gdf(layers.get("landuse")), _landuse_props)}
+    if name == "constraints":
+        return {"constraints": _collection(_gdf(layers.get("constraints")), _constraint_props)}
+    contours, interval = _contours(layers.get("terrain"), square)
+    return {
+        "contours": _collection(contours, lambda r: {"elevation_m": r.get("elevation_m")}),
+        "contour_interval_m": interval,
+    }
+
+
+def layer_geojson(name: str, result: LayerResult | None, outer: AOI, square: AOI) -> dict[str, Any] | None:
+    """Preview part for one freshly fetched layer, before any `Site` exists.
+
+    Clips just this layer with the same `clip_layers` as `layers_for`, so the
+    result matches `Site.preview` for the same square (building use needs the
+    other layers and arrives with the final preview). None for layers the map
+    does not draw, or when the layer misses the square.
+    """
+    if result is None or name not in PREVIEW_LAYERS:
+        return None
+    clipped = clip_layers({name: result}, outer, square)
+    if name not in clipped:
+        return None
+    raw = _gdf(result) if name == "buildings" else None
+    return jsonable(_part(name, clipped, square, outer, raw))
+
+
+def square_for_load(lon: float, lat: float, half_width_m: float, outer: AOI) -> AOI:
+    """The requested square in the padded fetch's CRS, as `Site.square` would build it."""
+    return AOI.from_point(lon, lat, half_width_m, name="site", crs=outer.crs)
+
+
+def _context(buildings: Any, square: AOI, outer: AOI) -> Any:
+    """Buildings in a ring around the square, for context massing."""
+    if buildings is None or not len(buildings):
+        return None
+    ring = square.geometry.buffer(CONTEXT_RING_M, join_style="mitre").difference(square.geometry)
+    ring = ring.intersection(outer.geometry)
+    clipped = buildings[buildings.intersects(ring)].clip(ring)
+    keep = [c for c in ("height_m",) if c in clipped.columns]
+    return clipped[[*keep, clipped.geometry.name]]
 
 
 def _with_building_use(layers: dict[str, LayerResult]) -> dict[str, LayerResult]:

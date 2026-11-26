@@ -20,7 +20,10 @@ import {
 } from "@/lib/layers";
 import { clampHalf, moveCentre, withinPadded, zoomToFit, type SquareState } from "@/lib/square";
 import type { Analysis, Climate, LayerEvent, Preview, ReadyEvent } from "@/lib/types";
+import { mergePreview, pendingLabels } from "@/lib/progressive";
+import { subsetPreview } from "@/lib/subset";
 import { Search } from "./Search";
+import { LoadPill } from "./LoadPill";
 import { LegendCard, LayersControl } from "./LayersControl";
 import { SkyOverlay } from "./SkyOverlay";
 import { Sky3D } from "./Sky3D";
@@ -93,6 +96,8 @@ export function Picker() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedRef = useRef<ReadyEvent | null>(null);
   const loadedAt = useRef<{ lon: number; lat: number } | null>(null);
+  /** The last preview the server returned, and the square it was drawn for: what instant subsets are cut from. */
+  const fullRef = useRef<{ preview: Preview; square: SquareState } | null>(null);
 
   const toast = useCallback((msg: string, action?: Toast["action"]) => {
     const id = Date.now() + Math.random();
@@ -191,8 +196,22 @@ export function Picker() {
       if (!force && cur && at && withinPadded(s, { ...at, paddedHalfM: cur.padded_half_width_m })) return cur;
       setLoading(true);
       setLayers({});
+      // A fresh load draws from scratch, layer by layer, as each event brings its geometry.
+      setPrev(null);
+      fullRef.current = null;
       try {
-        const ready = await loadSite(s.lon, s.lat, s.halfWidthM, tok, (l) => setLayers((m) => ({ ...m, [l.layer]: l })), signal);
+        const ready = await loadSite(
+          s.lon,
+          s.lat,
+          s.halfWidthM,
+          tok,
+          (l) => {
+            // The buildings update re-reports a layer already listed: keep its first timing.
+            if (!l.update) setLayers((m) => ({ ...m, [l.layer]: l }));
+            if (l.geojson) setPrev((cur) => mergePreview(cur, l.geojson));
+          },
+          signal,
+        );
         loadedRef.current = ready;
         loadedAt.current = { lon: ready.centre[0], lat: ready.centre[1] };
         setLoaded(ready);
@@ -225,17 +244,30 @@ export function Picker() {
     const q = new URLSearchParams({ lat: s.lat.toFixed(6), lon: s.lon.toFixed(6), size: String(Math.round(s.halfWidthM * 2)) });
     window.history.replaceState(null, "", `?${q}`);
 
+    // Inside what is already drawn: redraw now from the data in hand, then let the server refine it.
+    const have = fullRef.current;
+    const quick = have ? subsetPreview(have.preview, have.square, s) : null;
+    if (quick) {
+      setPrev(quick);
+      setAnalysing(true); // figures belong to the old square until analyse returns
+    }
+
     timer.current = setTimeout(async () => {
       const c = new AbortController();
       ctl.current = c;
       try {
-        const [a, pv] = await withReload(s, c.signal, async (ready) => {
+        await withReload(s, c.signal, async (ready) => {
           const p: SiteParams = { site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM };
           setAnalysing(true);
-          return Promise.all([analyse(p, tok, c.signal), fetchPreview(p, tok, c.signal)]);
+          // Each answer lands as soon as it arrives: the map should not wait for the figures.
+          return Promise.all([
+            analyse(p, tok, c.signal).then(setAnalysis),
+            fetchPreview(p, tok, c.signal).then((pv) => {
+              fullRef.current = { preview: pv, square: s };
+              setPrev(pv);
+            }),
+          ]);
         });
-        setAnalysis(a);
-        setPrev(pv);
       } catch (e) {
         if ((e as Error).name !== "AbortError") toast((e as Error).message || "Analysis failed");
       } finally {
@@ -316,7 +348,7 @@ export function Picker() {
   );
   const landuseClasses = useMemo(() => [...new Set((prev?.landuse?.features ?? []).map((f) => String(f.properties?.class ?? "other")))], [prev]);
   const stale = analysing || loading;
-  const loadList = Object.values(layers);
+  const pending = useMemo(() => pendingLabels(layers), [layers]);
 
   // Name the site: reverse-geocode once the square settles, cached by rounded position.
   useEffect(() => {
@@ -411,6 +443,8 @@ export function Picker() {
         )}
       </div>
 
+      <LoadPill pending={loading ? pending : []} />
+
       <SitePanel
         square={square}
         onSquare={(s) => onSquare(s, true)}
@@ -421,7 +455,7 @@ export function Picker() {
         typeKnown={typeKnown}
         stale={stale}
         loading={loading}
-        loadList={loadList}
+        layers={layers}
         tab={tab}
         onTab={setTab}
         climate={{

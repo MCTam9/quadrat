@@ -8,6 +8,10 @@ export interface LayerEvent {
   ok: boolean;
   /** Server-side time this layer took, in milliseconds. */
   ms?: number;
+  /** Preview keys this layer contributes for the requested square (vector layers only). */
+  geojson?: Partial<Preview>;
+  /** True for the follow-up buildings event carrying final heights and uses. */
+  update?: boolean;
 }
 
 export interface ReadyEvent {

@@ -9,6 +9,7 @@ import { formatCoords, type SiteName } from "@/lib/site-name";
 import type { Analysis, LayerEvent, Preview } from "@/lib/types";
 import { AccessCard, ClimateCard, ConstraintsCard, DensityMore, LandUseCard, StreetsCard, TerrainCard } from "./Cards";
 import { ClimatePanel } from "./ClimatePanel";
+import { LOAD_LAYERS } from "@/lib/progressive";
 import { ExportPanel, type ExportRequest } from "./ExportPanel";
 import { CompletenessLine, Schedule } from "./Schedule";
 import { SquareControls, SunTimes } from "./SquareCard";
@@ -25,7 +26,7 @@ interface Props {
   typeKnown: number | null;
   stale: boolean;
   loading: boolean;
-  loadList: LayerEvent[];
+  layers: Record<string, LayerEvent>;
   tab: Tab;
   onTab: (t: Tab) => void;
   climate: ComponentProps<typeof ClimatePanel>;
@@ -154,25 +155,7 @@ export function SitePanel(p: Props) {
                   <ClimatePanel {...p.climate} />
                 ) : (
                   <>
-                    {p.loading && (
-                      <section aria-live="polite">
-                        <h3 className="mb-2 text-sm font-semibold">Loading site data</h3>
-                        <ul className="space-y-1 text-xs">
-                          {p.loadList.map((l) => (
-                            <li key={l.layer} className="flex items-center gap-2">
-                              <span className="w-3 text-center" aria-label={l.ok ? "loaded" : "failed"}>{l.ok ? "✓" : "✕"}</span>
-                              <span className="capitalize">{l.layer}</span>
-                              <span className="ml-auto text-graphite nums">
-                                {l.provider ?? ""}
-                                {typeof l.features === "number" ? `, ${l.features}` : ""}
-                                {typeof l.ms === "number" ? ` · ${duration(l.ms)}` : ""}
-                              </span>
-                            </li>
-                          ))}
-                          <li className="flex items-center gap-2 text-graphite"><span className="skeleton h-3 w-3" />Fetching</li>
-                        </ul>
-                      </section>
-                    )}
+                    {p.loading && <LoadChecklist layers={p.layers} />}
                     <LandUseCard m={m?.landuse} loading={p.stale} stale={p.stale && !!m} />
                     <StreetsCard m={m?.street} loading={p.stale} stale={p.stale && !!m} />
                     <ConstraintsCard fc={p.preview?.constraints} />
@@ -194,3 +177,54 @@ export function SitePanel(p: Props) {
   );
 }
 
+
+/** Every layer a load fetches, pending until it reports. State is in words, not only colour. */
+function LoadChecklist({ layers }: { layers: Record<string, LayerEvent> }) {
+  const done = LOAD_LAYERS.filter((l) => layers[l.id]).length;
+  const total = LOAD_LAYERS.length;
+  return (
+    <section aria-live="polite">
+      <h3 className="mb-1 flex items-baseline text-sm font-semibold">
+        Loading site data
+        <span className="ml-auto text-xs font-normal text-graphite nums">
+          {done} of {total}
+        </span>
+      </h3>
+      <div
+        className="mb-2 h-1 w-full bg-rule"
+        role="progressbar"
+        aria-label="Layers loaded"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={`${done} of ${total} layers`}
+      >
+        <div className="h-full bg-ink transition-[width] motion-reduce:transition-none" style={{ width: `${(done / total) * 100}%` }} />
+      </div>
+      <ul className="space-y-1 text-xs">
+        {LOAD_LAYERS.map(({ id, label }) => {
+          const l = layers[id];
+          return (
+            <li key={id} className="flex items-center gap-2">
+              {!l ? (
+                <>
+                  <span className="skeleton h-3 w-3" aria-hidden />
+                  <span className="text-graphite">{label}</span>
+                  <span className="ml-auto text-graphite">Pending</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-3 text-center" aria-hidden>{l.ok ? "✓" : "✗"}</span>
+                  <span>{label}</span>
+                  <span className="ml-auto text-graphite nums">
+                    {l.ok ? (typeof l.ms === "number" ? duration(l.ms) : "Done") : "not available"}
+                  </span>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}

@@ -197,7 +197,7 @@ def test_token_from_the_domain_the_user_opened(rsa_auth, monkeypatch, azp, statu
 def test_load_streams_layers_then_ready(client, calls):
     ev = _events(_load(client).text)
     kinds = [k for k, _ in ev]
-    assert kinds == ["layer"] * 5 + ["ready"]
+    assert kinds == ["layer"] * 5 + ["ready"]  # no square on the request: no update event either
     assert "climate" not in {d["layer"] for k, d in ev if k == "layer"}
     assert all(isinstance(d["ms"], int) and d["ms"] >= 0 for k, d in ev if k == "layer")
     bld = next(d for k, d in ev if k == "layer" and d["layer"] == "buildings")
@@ -420,3 +420,45 @@ def test_slow_snapshot_write_is_capped_and_ready_still_arrives(client, store, mo
         assert _events(r.text)[-1][0] == "ready"
     finally:
         release.set()
+
+
+def _load_square(client, hw=300.0):
+    r = client.post("/api/load", json={"lon": LON, "lat": LAT, "half_width_m": hw})
+    assert r.status_code == 200
+    return _events(r.text)
+
+
+def test_layer_events_carry_the_same_geojson_as_preview(client):
+    ev = [d for k, d in _load_square(client) if k == "layer"]
+    prev = client.post("/api/preview", json={**_body(), "site_id": api_main.site_key(LON, LAT, 600.0)})
+    assert prev.status_code == 200
+    prev = prev.json()
+    by = {d["layer"]: d for d in ev if not d.get("update")}
+    assert "geojson" not in by.get("amenities", {})
+    assert by["streets"]["geojson"] == {"streets": prev["streets"]}
+    assert by["landuse"]["geojson"] == {"landuse": prev["landuse"]}
+    assert by["constraints"]["geojson"] == {"constraints": prev["constraints"]}
+    assert by["terrain"]["geojson"] == {
+        "contours": prev["contours"],
+        "contour_interval_m": prev["contour_interval_m"],
+    }
+    first = by["buildings"]["geojson"]
+    assert set(first) == {"buildings", "context"}
+    assert first["context"] == prev["context"]
+    upd = next(d for d in ev if d.get("update"))
+    assert upd["layer"] == "buildings"
+    assert upd["geojson"] == {"buildings": prev["buildings"], "context": prev["context"]}
+    assert ev[-1] is upd
+
+
+def test_load_without_a_square_sends_no_geojson(client):
+    ev = [d for k, d in _events(_load(client).text) if k == "layer"]
+    assert all("geojson" not in d for d in ev)
+
+
+def test_restored_site_events_carry_geojson_too(client, store):
+    _load_square(client)
+    api_main.SITES.clear()
+    ev = [d for k, d in _load_square(client) if k == "layer"]
+    assert all(d["ms"] == 0 for d in ev if not d.get("update"))
+    assert next(d for d in ev if d["layer"] == "streets")["geojson"]["streets"]["features"]

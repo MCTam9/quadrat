@@ -137,11 +137,36 @@ function setData(map: MapLibreMap, id: string, data: GeoJSON.FeatureCollection |
   (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 }
 
+const FADE_MS = 400;
+const FADE_PROP: Record<string, string> = { fill: "fill-opacity", line: "line-opacity", "fill-extrusion": "fill-extrusion-opacity" };
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Fade in the layers drawn from `source`: opacity goes 0 -> its normal value over FADE_MS (a MapLibre paint transition). */
+function fadeIn(map: MapLibreMap, source: string) {
+  for (const layer of map.getStyle().layers) {
+    const prop = FADE_PROP[layer.type];
+    if (!prop || !("source" in layer) || layer.source !== source) continue;
+    // The property names are computed per layer type, which the typed paint API cannot express.
+    const set = (name: string, value: unknown) => map.setPaintProperty(layer.id, name as never, value as never);
+    const target = map.getPaintProperty(layer.id, prop as never);
+    if (target == null) continue;
+    set(`${prop}-transition`, { duration: 0, delay: 0 });
+    set(prop, 0);
+    requestAnimationFrame(() => {
+      if (!map.getLayer(layer.id)) return;
+      set(`${prop}-transition`, { duration: FADE_MS, delay: 0 });
+      set(prop, target);
+    });
+  }
+}
+
 export default function MapView(props: Props) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef(false);
   const styleDark = useRef(false);
+  /** Sources that already have data on screen, so only the first arrival fades in. */
+  const shown = useRef(new Set<string>());
   const dark = useDark();
   const latest = useRef(props);
   useEffect(() => {
@@ -285,6 +310,7 @@ export default function MapView(props: Props) {
         paint: { "circle-radius": 4, "circle-color": pal.halo, "circle-opacity": 0.6, "circle-stroke-color": RED_LINE, "circle-stroke-width": 1.5, "circle-stroke-opacity": 0.8 },
       });
       readyRef.current = true;
+      shown.current.clear();
       sync();
       latest.current.onMap?.(map);
     };
@@ -456,6 +482,18 @@ export default function MapView(props: Props) {
     // 3D: flat fill only for buildings without a height.
     map.setFilter("buildings-fill", p.threeD ? ["<=", ["get", "h"], 0] : null);
     map.setFilter("context-fill", p.threeD ? ["<=", ["get", "h"], 0] : null);
+
+    // Layers arriving while a site loads fade in rather than pop.
+    const data: Record<string, GeoJSON.FeatureCollection | null | undefined> = {
+      buildings: p.buildings, streets: p.streets, context: p.context, landuse: p.landuse, contours: p.contours, constraints: p.constraints,
+    };
+    for (const [id, fc] of Object.entries(data)) {
+      if (!fc?.features.length) shown.current.delete(id);
+      else if (!shown.current.has(id)) {
+        shown.current.add(id);
+        if (!reducedMotion()) fadeIn(map, id);
+      }
+    }
   }
 
   useEffect(sync, [props.square, props.buildings, props.streets, props.threeD, props.mode, props.overlays, props.landuse, props.contours, props.constraints, props.context]);
