@@ -44,6 +44,7 @@ from starlette.types import Receive, Scope, Send
 
 import sce
 from sce.aoi import AOI
+from sce.pipeline import overpass_budget_s
 from sce.site import OutsideSite, Site, jsonable, layer_geojson, padded_half_width, site_key, square_for_load
 from sce.store import SnapshotStore, default_store
 from sce.types import LayerResult
@@ -369,6 +370,8 @@ async def load(req: LoadRequest) -> StreamingResponse:
     square = None if req.half_width_m is None else square_for_load(req.lon, req.lat, req.half_width_m, outer)
 
     def on_layer(name: str, result: LayerResult | None, ms: int) -> None:
+        with draft_lock:
+            settled.add(name)
         event = {
             "layer": name,
             "provider": result.provider if result else None,
@@ -383,6 +386,36 @@ async def load(req: LoadRequest) -> StreamingResponse:
             except Exception:
                 # Drawing early is a bonus; the final preview still arrives.
                 log.warning("early geojson for %s failed", name, exc_info=True)
+        if event.get("geojson") is None:
+            event.pop("geojson", None)
+        emit("layer", jsonable(event))
+
+    # Layers that have been reported, as a draft or for real: a draft is emitted at most once
+    # and never after the real layer.
+    settled: set[str] = set()
+    draft_lock = threading.Lock()
+
+    def on_draft(name: str, result: LayerResult, ms: int) -> None:
+        """A quick map-tile version of a layer, flagged `draft`; the real layer's event replaces it."""
+        with draft_lock:
+            # `fetch_layers` already refuses a draft after its layer; this is the second lock.
+            if name in settled:
+                return
+            settled.add(name)
+        event = {
+            "layer": name,
+            "draft": True,
+            "provider": result.provider,
+            "features": 0 if result.gdf is None else len(result.gdf),
+            "coverage": result.coverage,
+            "ok": True,
+            "ms": ms,
+        }
+        if square is not None:
+            try:
+                event["geojson"] = layer_geojson(name, result, outer, square)
+            except Exception:
+                log.warning("draft geojson for %s failed", name, exc_info=True)
         if event.get("geojson") is None:
             event.pop("geojson", None)
         emit("layer", jsonable(event))
@@ -408,7 +441,14 @@ async def load(req: LoadRequest) -> StreamingResponse:
                 emit_final_buildings(known)
                 emit("ready", known.ready())
                 return
-            site = Site.load(req.lon, req.lat, req.half_width_m, on_layer=on_layer)
+            site = Site.load(
+                req.lon,
+                req.lat,
+                req.half_width_m,
+                on_layer=on_layer,
+                on_draft=on_draft,
+                overpass_budget_s=overpass_budget_s(),
+            )
             SITES.put(site)
             emit_final_buildings(site)
             _save_snapshot(site)  # before `ready`: see _save_snapshot
