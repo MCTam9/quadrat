@@ -6,6 +6,8 @@ export interface LayerEvent {
   features?: number;
   coverage?: number | null;
   ok: boolean;
+  /** Server-side time this layer took, in milliseconds. */
+  ms?: number;
 }
 
 export interface ReadyEvent {
