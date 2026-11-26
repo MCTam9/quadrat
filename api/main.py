@@ -44,7 +44,7 @@ from starlette.types import Receive, Scope, Send
 
 import sce
 from sce.aoi import AOI
-from sce.site import OutsideSite, Site, jsonable, padded_half_width, site_key
+from sce.site import OutsideSite, Site, jsonable, layer_geojson, padded_half_width, site_key, square_for_load
 from sce.store import SnapshotStore, default_store
 from sce.types import LayerResult
 
@@ -365,20 +365,38 @@ async def load(req: LoadRequest) -> StreamingResponse:
     def emit(event: str, data: Any) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, (event, data))
 
+    outer = AOI.from_point(req.lon, req.lat, padded_half_width(req.half_width_m), name="padded")
+    square = None if req.half_width_m is None else square_for_load(req.lon, req.lat, req.half_width_m, outer)
+
     def on_layer(name: str, result: LayerResult | None, ms: int) -> None:
-        emit(
-            "layer",
-            jsonable(
-                {
-                    "layer": name,
-                    "provider": result.provider if result else None,
-                    "features": 0 if result is None or result.gdf is None else len(result.gdf),
-                    "coverage": result.coverage if result else None,
-                    "ok": result is not None,
-                    "ms": ms,
-                }
-            ),
-        )
+        event = {
+            "layer": name,
+            "provider": result.provider if result else None,
+            "features": 0 if result is None or result.gdf is None else len(result.gdf),
+            "coverage": result.coverage if result else None,
+            "ok": result is not None,
+            "ms": ms,
+        }
+        if square is not None:
+            try:
+                event["geojson"] = layer_geojson(name, result, outer, square)
+            except Exception:
+                # Drawing early is a bonus; the final preview still arrives.
+                log.warning("early geojson for %s failed", name, exc_info=True)
+        if event.get("geojson") is None:
+            event.pop("geojson", None)
+        emit("layer", jsonable(event))
+
+    def emit_final_buildings(site: Site) -> None:
+        """Buildings again once LiDAR heights and building use are in, same shape as a layer event."""
+        if square is None or "buildings" not in site.layers:
+            return
+        try:
+            parts = site.preview_parts(site.square(req.lon, req.lat, req.half_width_m), ["buildings"])
+        except Exception:
+            log.warning("final buildings geojson failed", exc_info=True)
+            return
+        emit("layer", {"layer": "buildings", "update": True, "geojson": parts["buildings"]})
 
     def work() -> None:
         try:
@@ -387,10 +405,12 @@ async def load(req: LoadRequest) -> StreamingResponse:
             if known is not None:
                 for name, result in known.layers.items():
                     on_layer(name, result, 0)
+                emit_final_buildings(known)
                 emit("ready", known.ready())
                 return
             site = Site.load(req.lon, req.lat, req.half_width_m, on_layer=on_layer)
             SITES.put(site)
+            emit_final_buildings(site)
             _save_snapshot(site)  # before `ready`: see _save_snapshot
             emit("ready", site.ready())
         except Exception:
