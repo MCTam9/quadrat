@@ -399,3 +399,20 @@ def test_constraint_datasets_are_fetched_in_parallel_and_in_order(monkeypatch, t
         "listed-building-outline",
     ]
     assert [s.name.split(": ")[1] for s in res.sources] == list(res.gdf["dataset"].unique())
+
+
+def test_restored_site_fetches_climate_lazily(monkeypatch):
+    calls: list = []
+
+    def fetch(aoi, cache, *, on_layer=None, only=None, timings=None, height_focus=None):
+        calls.append(only)
+        return {k: v for k, v in site_layers(aoi).items() if only is None or k in only}
+
+    loaded = Site.load(LON, LAT, 300.0, cache=object(), fetch=fetch)
+    assert "climate" not in loaded.layers
+    restored = Site.restore(loaded.snapshot())  # a snapshot needs no climate layer
+    assert "climate" not in restored.layers and restored.key == loaded.key and restored.timings == {}
+    monkeypatch.setattr(pipeline, "fetch_layers", fetch)
+    calls.clear()
+    d = restored.analyse(restored.square(LON, LAT, 300.0))
+    assert d["metrics"]["climate"] and calls == [["climate"]]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import threading
 import time
 import zipfile
 
@@ -23,8 +24,30 @@ LON, LAT = -0.1, 51.5
 SID = api_main.site_key(LON, LAT)  # no half_width_m on load -> maximum padding
 
 
+class MemoryStore:
+    """In-memory snapshot store that counts writes."""
+
+    def __init__(self):
+        self.blobs: dict[str, bytes] = {}
+        self.puts = 0
+
+    def get(self, key):
+        return self.blobs.get(key)
+
+    def put(self, key, data):
+        self.blobs[key] = data
+        self.puts += 1
+
+
 @pytest.fixture
-def calls(monkeypatch):
+def store(monkeypatch):
+    st = MemoryStore()
+    monkeypatch.setattr(api_main, "STORE", st)
+    return st
+
+
+@pytest.fixture
+def calls(monkeypatch, store):
     rec: list = []
 
     def fake_fetch(aoi, cache, *a, on_layer=None, only=None, **kw):
@@ -334,3 +357,66 @@ def test_event_stream_is_never_gzipped(client):
     assert r.headers["content-type"].startswith("text/event-stream")
     kinds = [k for k, _ in _events(r.text)]
     assert kinds[-1] == "ready" and kinds.count("layer") == 5
+
+
+# -- snapshots: a cold instance restores the site instead of answering 409 ---------------
+
+
+def test_load_writes_a_snapshot_and_a_cold_instance_restores_it(client, store):
+    _load(client)
+    assert store.puts == 1  # written before `ready`
+    warm = client.post("/api/analyse", json=_body()).json()
+    api_main.SITES.clear()
+    r = client.post("/api/analyse", json=_body())
+    assert r.status_code == 200 and r.json() == warm
+    assert client.post("/api/preview", json=_body()).status_code == 200
+    api_main.SITES.clear()
+    assert client.post("/api/climate", json={"site_id": SID}).status_code == 200
+
+
+def test_unknown_site_is_still_409(client):
+    assert client.post("/api/analyse", json=_body()).status_code == 409
+
+
+def test_load_of_a_stored_site_skips_the_fetch(client, store, calls):
+    _load(client)
+    assert store.puts == 1  # written before `ready`
+    n = len(calls)
+    api_main.SITES.clear()
+    r = _load(client)
+    events = _events(r.text)
+    assert len(calls) == n and store.puts == 1  # a restored site is not written back
+    assert events[-1][0] == "ready" and events[-1][1]["site_id"] == SID
+    layer_events = [d for e, d in events if e == "layer"]
+    assert len(layer_events) == 5 and "climate" not in {d["layer"] for d in layer_events}
+    assert {d["layer"] for d in layer_events} >= {"buildings", "terrain", "streets"}
+    assert all(d["ms"] == 0 for d in layer_events)
+
+
+def test_store_failures_are_swallowed(client, store, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("store down")
+
+    monkeypatch.setattr(store, "get", boom)
+    monkeypatch.setattr(store, "put", boom)
+    r = _load(client)
+    assert _events(r.text)[-1][0] == "ready"
+    assert client.post("/api/analyse", json=_body()).status_code == 200
+    api_main.SITES.clear()
+    assert client.post("/api/analyse", json=_body()).status_code == 409
+
+
+def test_corrupt_snapshot_is_a_miss(client, store):
+    store.blobs[SID] = b"not a zip"
+    assert client.post("/api/analyse", json=_body()).status_code == 409
+
+
+def test_slow_snapshot_write_is_capped_and_ready_still_arrives(client, store, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(api_main, "SNAPSHOT_WAIT_S", 0.2)
+    monkeypatch.setattr(store, "put", lambda key, data: release.wait(10))
+    try:
+        r = _load(client)
+        assert _events(r.text)[-1][0] == "ready"
+    finally:
+        release.set()
