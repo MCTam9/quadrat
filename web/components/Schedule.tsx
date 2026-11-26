@@ -7,7 +7,7 @@ import { areaKm2, type SquareState } from "@/lib/square";
 import type { Analysis, Metrics } from "@/lib/types";
 import { HEIGHT_SOURCE } from "@/lib/vocab.generated";
 
-const SHORT: Record<string, string> = { height: "height tag", lidar: "LiDAR", levels: "storeys", unknown: "none" };
+const SHORT: Record<string, string> = { height: "height tag", lidar: "LiDAR", levels: "storeys", tiles: "map tiles", unknown: "none" };
 
 /** How the building heights behind FSI were found, e.g. "height tag 20 %, LiDAR 50 %". */
 export function heightSourceText(s: HeightShares): string {

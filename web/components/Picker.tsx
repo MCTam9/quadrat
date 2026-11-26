@@ -20,7 +20,7 @@ import {
 } from "@/lib/layers";
 import { clampHalf, moveCentre, withinPadded, zoomToFit, type SquareState } from "@/lib/square";
 import type { Analysis, Climate, LayerEvent, Preview, ReadyEvent } from "@/lib/types";
-import { mergePreview, pendingLabels } from "@/lib/progressive";
+import { acceptEvent, mergePreview, pendingLabels } from "@/lib/progressive";
 import { subsetPreview } from "@/lib/subset";
 import { Search } from "./Search";
 import { LoadPill } from "./LoadPill";
@@ -199,6 +199,7 @@ export function Picker() {
       // A fresh load draws from scratch, layer by layer, as each event brings its geometry.
       setPrev(null);
       fullRef.current = null;
+      const real = new Set<string>();
       try {
         const ready = await loadSite(
           s.lon,
@@ -206,6 +207,9 @@ export function Picker() {
           s.halfWidthM,
           tok,
           (l) => {
+            // A draft from map tiles shows first and is replaced by the layer's real event; one
+            // that arrives after the real layer is stale.
+            if (!acceptEvent(real, l)) return;
             // The buildings update re-reports a layer already listed: keep its first timing.
             if (!l.update) setLayers((m) => ({ ...m, [l.layer]: l }));
             if (l.geojson) setPrev((cur) => mergePreview(cur, l.geojson));

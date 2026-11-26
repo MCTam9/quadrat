@@ -9,7 +9,7 @@ import { formatCoords, type SiteName } from "@/lib/site-name";
 import type { Analysis, LayerEvent, Preview } from "@/lib/types";
 import { AccessCard, ClimateCard, ConstraintsCard, DensityMore, LandUseCard, StreetsCard, TerrainCard } from "./Cards";
 import { ClimatePanel } from "./ClimatePanel";
-import { LOAD_LAYERS } from "@/lib/progressive";
+import { doneCount, fromTiles, LOAD_LAYERS, rowState } from "@/lib/progressive";
 import { ExportPanel, type ExportRequest } from "./ExportPanel";
 import { CompletenessLine, Schedule } from "./Schedule";
 import { SquareControls, SunTimes } from "./SquareCard";
@@ -180,7 +180,7 @@ export function SitePanel(p: Props) {
 
 /** Every layer a load fetches, pending until it reports. State is in words, not only colour. */
 function LoadChecklist({ layers }: { layers: Record<string, LayerEvent> }) {
-  const done = LOAD_LAYERS.filter((l) => layers[l.id]).length;
+  const done = doneCount(layers);
   const total = LOAD_LAYERS.length;
   return (
     <section aria-live="polite">
@@ -204,20 +204,29 @@ function LoadChecklist({ layers }: { layers: Record<string, LayerEvent> }) {
       <ul className="space-y-1 text-xs">
         {LOAD_LAYERS.map(({ id, label }) => {
           const l = layers[id];
+          const state = rowState(l);
           return (
             <li key={id} className="flex items-center gap-2">
-              {!l ? (
+              {state === "pending" ? (
                 <>
                   <span className="skeleton h-3 w-3" aria-hidden />
                   <span className="text-graphite">{label}</span>
                   <span className="ml-auto text-graphite">Pending</span>
                 </>
+              ) : state === "draft" ? (
+                <>
+                  <span className="w-3 text-center text-graphite" aria-hidden>◐</span>
+                  <span>{label}</span>
+                  <span className="ml-auto text-graphite">Draft from map tiles</span>
+                </>
               ) : (
                 <>
-                  <span className="w-3 text-center" aria-hidden>{l.ok ? "✓" : "✗"}</span>
+                  <span className="w-3 text-center" aria-hidden>{state === "done" ? "✓" : "✗"}</span>
                   <span>{label}</span>
                   <span className="ml-auto text-graphite nums">
-                    {l.ok ? (typeof l.ms === "number" ? duration(l.ms) : "Done") : "not available"}
+                    {state === "done"
+                      ? `${typeof l?.ms === "number" ? duration(l.ms) : "Done"}${fromTiles(l) ? " (map tiles)" : ""}`
+                      : "not available"}
                   </span>
                 </>
               )}
