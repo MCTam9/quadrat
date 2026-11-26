@@ -117,6 +117,12 @@ OSM queries fall back across several Overpass servers, because the main public o
 often answers "at capacity". Override the list with `SCE_OVERPASS_URLS`
 (comma-separated).
 
+In the web app, buildings, streets, land use and amenities are first drawn within a
+couple of seconds from OpenFreeMap vector tiles (OpenMapTiles schema), flagged as
+drafts, and replaced by the Overpass result when it arrives. If Overpass has not
+answered within `SCE_OVERPASS_BUDGET_S` seconds (default 90) or fails, the tile layers
+become the final result, marked approximate in the layer notes.
+
 ## Output formats
 
 The PDF sheet and the dossier are always written (the sheet can be skipped with

@@ -127,6 +127,12 @@ invent a number: when coverage is too low, return None and report the coverage.
   vector format) and `sce/export/_georef.py` (CRS and local-origin sidecar).
 - OSM providers call `configure_osmnx(cache)` and wrap queries in
   `with_overpass_fallback(...)` from `sce/providers/_overpass.py`.
+- `sce/providers/openfreemap_tiles.py` registers `tiles_buildings`, `tiles_streets`,
+  `tiles_landuse` and `tiles_amenities` at rank 90, after every OSM provider. They
+  decode one shared fetch of OpenFreeMap z14 tiles (`tile_results`), always return
+  `degraded=True` with a "From map tiles:" note, and carry no street graph (the street
+  and access metrics report "not available" without one). `fetch_layers(on_draft=...,
+  overpass_budget_s=...)` draws them as drafts and lets them stand in for slow Overpass.
 
 ## Web app
 
