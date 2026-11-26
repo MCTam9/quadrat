@@ -1,4 +1,4 @@
-"""Private site-picker backend: Clerk-authenticated FastAPI over `sce.site.Site`.
+"""Quadrat API: Clerk-authenticated FastAPI over `sce.site.Site`.
 
 HTTP only: auth, request validation, SSE framing, error mapping and zip
 streaming. Everything about a site (padded fetch, clipping, analysis, preview,
