@@ -166,6 +166,100 @@ def test_write_gpkg_attributes_present(tmp_path, aoi, layers, metrics):
     assert "attributes" in layer_names or sidecar.exists()
 
 
+def _write(tmp_path, frames):
+    from sce.export.gpkg_writer import write_layers
+
+    return write_layers(tmp_path / "w.gpkg", frames)
+
+
+def test_gpkg_header_and_spatial_index(tmp_path, aoi, layers):
+    import sqlite3
+
+    import pyogrio
+
+    out = write_gpkg(tmp_path / "idx.gpkg", layers, aoi)
+    con = sqlite3.connect(out)
+    try:
+        assert con.execute("PRAGMA application_id").fetchone()[0] == 0x47504B47
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 10400
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master")}
+        assert "rtree_buildings_geom" in tables
+        assert con.execute("SELECT COUNT(*) FROM rtree_buildings_geom").fetchone()[0] == len(
+            layers["buildings"].gdf
+        )
+    finally:
+        con.close()
+    info = pyogrio.read_info(out, layer="buildings")
+    assert info["features"] == len(layers["buildings"].gdf)
+    assert info["geometry_type"] == "Polygon"
+
+
+def test_gpkg_empty_layer(tmp_path, aoi):
+    import pyogrio
+
+    empty = gpd.GeoDataFrame({"a": []}, geometry=[], crs=aoi.crs)
+    out = _write(tmp_path, {"empty": empty})
+    assert pyogrio.read_info(out, layer="empty")["features"] == 0
+    assert len(gpd.read_file(out, layer="empty")) == 0
+
+
+def test_gpkg_mixed_nulls(tmp_path, aoi):
+    gdf = gpd.GeoDataFrame(
+        {
+            "i": [1, None, 3],
+            "f": [1.5, np.nan, 2.5],
+            "s": ["a", None, "c"],
+            "b": [True, False, True],
+        },
+        geometry=[box(0, 0, 1, 1), None, box(2, 2, 3, 3)],
+        crs=aoi.crs,
+    )
+    gdf["i"] = gdf["i"].astype("Int64")
+    back = gpd.read_file(_write(tmp_path, {"t": gdf}), layer="t")
+    assert back["f"].isna().tolist() == [False, True, False]
+    assert back["s"].isna().tolist() == [False, True, False]
+    assert back["i"].isna().tolist() == [False, True, False]
+    assert back.geometry.isna().tolist() == [False, True, False]
+    assert back["b"].tolist() == [True, False, True]
+
+
+def test_gpkg_multipolygon_and_mixed_types(tmp_path, aoi):
+    from shapely.geometry import MultiPolygon
+
+    multi = MultiPolygon([box(0, 0, 1, 1), box(5, 5, 6, 6)])
+    gdf = gpd.GeoDataFrame({"k": [1, 2]}, geometry=[multi, box(9, 9, 10, 10)], crs=aoi.crs)
+    back = gpd.read_file(_write(tmp_path, {"m": gdf}), layer="m")
+    assert back.geometry.iloc[0].equals(multi)
+    assert back.geometry.iloc[1].equals(box(9, 9, 10, 10))
+
+
+def test_gpkg_non_ascii_text(tmp_path, aoi):
+    gdf = gpd.GeoDataFrame(
+        {"name": ["Zürich", "東京", "Ōsaka \u2013 café"]}, geometry=[box(0, 0, 1, 1)] * 3, crs=aoi.crs
+    )
+    back = gpd.read_file(_write(tmp_path, {"n": gdf}), layer="n")
+    assert back["name"].tolist() == gdf["name"].tolist()
+
+
+def test_gpkg_attribute_only_table(tmp_path):
+    import pandas as pd
+    import pyogrio
+
+    df = pd.DataFrame({"kind": ["metric", "metric"], "value": [1.0, None]})
+    out = _write(tmp_path, {"attributes": df})
+    assert ("attributes", None) in [(n, g) for n, g in pyogrio.list_layers(out)]
+    back = pyogrio.read_dataframe(out, layer="attributes")
+    assert back["kind"].tolist() == ["metric", "metric"]
+    assert back["value"].isna().tolist() == [False, True]
+
+
+@pytest.mark.parametrize("epsg", [32642, 27700, 4326])
+def test_gpkg_crs_roundtrip(tmp_path, epsg):
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[box(0, 0, 1, 1)], crs=f"EPSG:{epsg}")
+    back = gpd.read_file(_write(tmp_path, {"c": gdf}), layer="c")
+    assert back.crs == gdf.crs
+
+
 # -- qml -------------------------------------------------------------------
 
 

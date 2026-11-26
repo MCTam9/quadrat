@@ -2,9 +2,9 @@
 
 GPKG reserves the column names `fid` and `geom` (and forbids empty-all-null
 columns surviving a round trip cleanly on some drivers), so attribute frames
-are sanitised before `to_file`. Metrics/provenance go into a non-spatial
-attribute table in the same file when pyogrio allows a non-spatial layer,
-else a sidecar JSON next to the .gpkg.
+are sanitised before they go through `gpkg_writer` (stdlib sqlite3, so the API
+bundle needs no GDAL/pyogrio). Metrics/provenance go into a non-spatial
+attribute table in the same file, else a sidecar JSON next to the .gpkg.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from typing import Any
 
 import geopandas as gpd
 import pandas as pd
-import pyogrio
 
 from ..types import LayerResult
+from .gpkg_writer import write_layers
 
 _RESERVED = {"fid", "geom", "geometry"}
 
@@ -82,51 +82,29 @@ def write_gpkg(
     """Write every layer's geometry plus the AOI square to a layered GPKG.
 
     Metrics/provenance are attempted as a non-spatial attribute table in the
-    same GPKG (pyogrio permits this via a plain DataFrame `to_file`); if that
-    fails for any reason we fall back to a sidecar `<path>.attributes.json`
+    same GPKG; if that fails for any reason we fall back to a sidecar `<path>.attributes.json`
     so the information is never silently lost.
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        path.unlink()
 
-    _aoi_gdf(aoi).to_file(path, layer="aoi", driver="GPKG")
-
-    written: list[str] = ["aoi"]
+    frames: dict[str, pd.DataFrame] = {"aoi": _aoi_gdf(aoi)}
     for name, result in sorted(layers.items()):
         if result is None or result.gdf is None or len(result.gdf) == 0:
             continue
         gdf = result.gdf
         if gdf.crs is None or gdf.crs != aoi.crs:
             gdf = aoi.to_metric(gdf)
-        gdf = _sanitize_gdf(gdf)
-        if gdf.geometry.name != "geometry":
-            gdf = gdf.set_geometry(gdf.geometry.name)
-        gdf.to_file(path, layer=name, driver="GPKG")
-        written.append(name)
+        frames[name] = _sanitize_gdf(gdf)
 
+    attrs = _attributes_frame(layers, metrics)
     attrs_written = False
-    if metrics or layers:
-        rows: list[dict[str, Any]] = []
-        for layer_name, result in sorted(layers.items()):
-            if result is None:
-                continue
-            flat: dict[str, Any] = {"kind": "layer_provenance", "layer": layer_name}
-            _flatten_for_table("", result.provenance(), flat)
-            rows.append(flat)
-        for metric_name, values in sorted((metrics or {}).items()):
-            flat = {"kind": "metric", "layer": metric_name}
-            _flatten_for_table("", values, flat)
-            rows.append(flat)
-        if rows:
-            df = pd.DataFrame(rows)
-            df = df.rename(columns={c: _sanitize_column_name(c) for c in df.columns})
-            try:
-                pyogrio.write_dataframe(df, path, layer="attributes", driver="GPKG")
-                attrs_written = True
-            except Exception:
-                attrs_written = False
+    try:
+        write_layers(path, {**frames, "attributes": attrs} if attrs is not None else frames)
+        attrs_written = attrs is not None
+    except Exception:
+        if attrs is None:
+            raise
+        write_layers(path, frames)
 
     if not attrs_written and metrics:
         sidecar = path.with_suffix(path.suffix + ".attributes.json")
@@ -143,3 +121,23 @@ def write_gpkg(
         )
 
     return path
+
+
+def _attributes_frame(layers: dict[str, LayerResult], metrics: dict[str, dict] | None) -> pd.DataFrame | None:
+    if not (metrics or layers):
+        return None
+    rows: list[dict[str, Any]] = []
+    for layer_name, result in sorted(layers.items()):
+        if result is None:
+            continue
+        flat: dict[str, Any] = {"kind": "layer_provenance", "layer": layer_name}
+        _flatten_for_table("", result.provenance(), flat)
+        rows.append(flat)
+    for metric_name, values in sorted((metrics or {}).items()):
+        flat = {"kind": "metric", "layer": metric_name}
+        _flatten_for_table("", values, flat)
+        rows.append(flat)
+    if not rows:
+        return None
+    df = pd.DataFrame(rows)
+    return df.rename(columns={c: _sanitize_column_name(c) for c in df.columns})
