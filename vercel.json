@@ -7,11 +7,11 @@
     "api": {
       "root": ".",
       "entrypoint": "api/main.py",
-      "installCommand": "pip install '.[rhino,mesh,web]'",
+      "installCommand": "pip install '.[rhino,mesh,web]' && \"$(dirname \"$(command -v pip)\")/python\" scripts/trim_site_packages.py",
       "functions": {
         "api/main.py": {
           "maxDuration": 300,
-          "excludeFiles": "{{tests,out,web,docs}/**,**/__pycache__/**,_vendor/**/{tests/**,*.pyx,*.pxd,*.pyi,*.h,*.hpp,*.c,*.cpp},_vendor/pyarrow/{include/**,libarrow_flight*,_flight*}}"
+          "excludeFiles": "{tests/**,out/**,web/**,docs/**,scripts/**,**/__pycache__/**}"
         }
       }
     }
