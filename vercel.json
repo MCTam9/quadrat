@@ -1,8 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
+  },
   "services": {
     "web": {
-      "root": "web"
+      "root": "web",
+      "ignoreCommand": "bash \"$(git rev-parse --show-toplevel)/scripts/vercel_ignore.sh\""
     },
     "api": {
       "root": ".",
@@ -13,7 +20,8 @@
           "maxDuration": 300,
           "excludeFiles": "{tests/**,out/**,web/**,docs/**,scripts/**,**/__pycache__/**}"
         }
-      }
+      },
+      "ignoreCommand": "bash \"$(git rev-parse --show-toplevel)/scripts/vercel_ignore.sh\""
     }
   },
   "rewrites": [

@@ -19,7 +19,7 @@ import {
   type Overlay,
   type UseSource,
 } from "@/lib/layers";
-import { useDark } from "@/lib/theme";
+import { setThemePref, THEME_PREFS, useDark, useThemePref, type ThemePref } from "@/lib/theme";
 
 function Swatch({ color, hatch, line }: { color: string; hatch?: boolean; line?: boolean }) {
   if (line) return <span className="h-0 w-3 shrink-0 border-t-2" style={{ borderColor: color }} aria-hidden />;
@@ -132,6 +132,47 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
+/** Sun for light, moon for dark, half-and-half for following the OS. */
+function ThemeIcon({ pref }: { pref: ThemePref }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5">
+      {pref === "light" && (
+        <>
+          <circle cx="8" cy="8" r="3" />
+          <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3" />
+        </>
+      )}
+      {pref === "dark" && <path d="M13.5 9.5A5.5 5.5 0 1 1 6.5 2.5a4.5 4.5 0 0 0 7 7Z" />}
+      {pref === "system" && (
+        <>
+          <circle cx="8" cy="8" r="5.5" />
+          <path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** Cycles Auto (follow the OS), Light and Dark. */
+function ThemeButton() {
+  const pref = useThemePref();
+  const i = THEME_PREFS.findIndex((p) => p.id === pref);
+  const next = THEME_PREFS[(i + 1) % THEME_PREFS.length];
+  const label = THEME_PREFS[i].label;
+  return (
+    <button
+      type="button"
+      className="sheet flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold hover:bg-hover"
+      title={`Theme: ${label}. Click for ${next.label.toLowerCase()}.`}
+      aria-label={`Theme: ${label}. Switch to ${next.label.toLowerCase()}`}
+      onClick={() => setThemePref(next.id)}
+    >
+      <ThemeIcon pref={pref} />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
+}
+
 /** 2D/3D and the layers menu in one compact row. The menu scrolls inside its own max height. */
 export function LayersControl({
   layers,
@@ -180,6 +221,7 @@ export function LayersControl({
           </span>
           <span className="ml-auto"><Chevron open={open} /></span>
         </button>
+        <ThemeButton />
       </div>
       {open && (
         <div id={panelId} className="sheet mt-2 max-h-[min(44dvh,24rem)] space-y-3 overflow-y-auto p-3 text-xs">
