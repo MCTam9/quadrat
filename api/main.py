@@ -6,8 +6,9 @@ climate, export files) lives in `sce/site.py`, where it is tested directly.
 
 `/api/load` builds a `Site` (slow, streamed as SSE) and keeps it in a small
 in-process LRU; the other routes view squares inside it. The LRU is per
-process: a cold serverless instance will not have it, which is why the square
-routes answer 409 `{"error": "reload"}` and the frontend re-runs `/api/load`.
+process, so each loaded site is also snapshotted to a `sce.store` (private Vercel
+Blob in production) and a cold instance restores it from there. Only when neither
+holds the site do the square routes answer 409 `{"error": "reload"}`.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from starlette.background import BackgroundTask
 import sce
 from sce.aoi import AOI
 from sce.site import OutsideSite, Site, jsonable, padded_half_width, site_key
+from sce.store import SnapshotStore, default_store
 from sce.types import LayerResult
 
 __all__ = ["app", "padded_half_width", "site_key"]
@@ -183,6 +185,59 @@ class _SiteStore:
 
 SITES = _SiteStore(8)
 
+# Shared snapshot store; None disables snapshots. Tests replace it.
+STORE: SnapshotStore | None = default_store()
+
+
+def _restore(key: str | None) -> Site | None:
+    """A site from the snapshot store, or None. Never raises: snapshots are an optimisation."""
+    if key is None or STORE is None:
+        return None
+    try:
+        data = STORE.get(key)
+        return Site.restore(data) if data else None
+    except Exception:
+        log.warning("snapshot restore failed for %s", key, exc_info=True)
+        return None
+
+
+SNAPSHOT_WAIT_S = 15.0
+
+
+def _save_snapshot(site: Site) -> None:
+    """Write `site` to the store, waiting at most SNAPSHOT_WAIT_S. Never raises.
+
+    Synchronous on purpose: once the response ends Vercel may freeze the instance and lose a
+    background upload. Callers run this on the load worker thread, so SSE pings keep flowing.
+    """
+    store = STORE
+    if store is None:
+        return
+
+    def run() -> None:
+        try:
+            store.put(site.key, site.snapshot())
+        except Exception:
+            log.warning("snapshot write failed for %s", site.key, exc_info=True)
+
+    thread = threading.Thread(target=run, name="sce-snapshot", daemon=True)
+    thread.start()
+    thread.join(SNAPSHOT_WAIT_S)
+    if thread.is_alive():
+        log.warning("snapshot write for %s still running after %.0f s; continuing", site.key, SNAPSHOT_WAIT_S)
+
+
+def _lookup(key: str | None) -> Site | None:
+    """The site for `key`: in memory, else restored from the store (and kept in memory)."""
+    site = SITES.get(key)
+    if site is None:
+        site = _restore(key)
+        if site is not None and site.key == key:
+            SITES.put(site)
+        else:
+            site = None
+    return site
+
 
 # ---------------------------------------------------------------- models
 
@@ -221,7 +276,7 @@ def _sse(event: str, data: Any) -> str:
 
 def _site_and_square(req: SquareRequest) -> tuple[Site, AOI]:
     """The loaded site and the requested square, or 409 telling the client to reload."""
-    site = SITES.get(req.site_id)
+    site = _lookup(req.site_id)
     if site is None:
         raise HTTPException(status_code=409, detail="reload")
     try:
@@ -287,25 +342,32 @@ async def load(req: LoadRequest) -> StreamingResponse:
     def emit(event: str, data: Any) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, (event, data))
 
+    def on_layer(name: str, result: LayerResult | None) -> None:
+        emit(
+            "layer",
+            jsonable(
+                {
+                    "layer": name,
+                    "provider": result.provider if result else None,
+                    "features": 0 if result is None or result.gdf is None else len(result.gdf),
+                    "coverage": result.coverage if result else None,
+                    "ok": result is not None,
+                }
+            ),
+        )
+
     def work() -> None:
         try:
-
-            def on_layer(name: str, result: LayerResult | None) -> None:
-                emit(
-                    "layer",
-                    jsonable(
-                        {
-                            "layer": name,
-                            "provider": result.provider if result else None,
-                            "features": 0 if result is None or result.gdf is None else len(result.gdf),
-                            "coverage": result.coverage if result else None,
-                            "ok": result is not None,
-                        }
-                    ),
-                )
-
+            key = site_key(req.lon, req.lat, padded_half_width(req.half_width_m))
+            known = _lookup(key)
+            if known is not None:
+                for name, result in known.layers.items():
+                    on_layer(name, result)
+                emit("ready", known.ready())
+                return
             site = Site.load(req.lon, req.lat, req.half_width_m, on_layer=on_layer)
             SITES.put(site)
+            _save_snapshot(site)  # before `ready`: see _save_snapshot
             emit("ready", site.ready())
         except Exception:
             log.exception("load failed")
@@ -346,7 +408,7 @@ def preview(req: SquareRequest) -> dict[str, Any]:
 @api.post("/climate")
 def climate(req: SiteRequest) -> dict[str, Any]:
     """Typical-year hourly series and monthly summaries for the loaded site."""
-    site = SITES.get(req.site_id)
+    site = _lookup(req.site_id)
     if site is None:
         raise HTTPException(status_code=409, detail="reload")
     summary = site.climate()
@@ -364,7 +426,7 @@ def _iter_file(path: Path) -> Iterator[bytes]:
 @api.post("/export")
 def export(req: ExportRequest) -> StreamingResponse:
     """Zip of the chosen formats. Uses the loaded site when the square fits it, else fetches."""
-    site = SITES.get(req.site_id)
+    site = _lookup(req.site_id)
     square = None
     if site is not None:
         try:

@@ -105,6 +105,20 @@ class Site:
             raise NoData("no data available for this location")
         return cls(outer, layers)
 
+    def snapshot(self) -> bytes:
+        """The outer square and every layer as one zip, for `sce.store` (see `sce.snapshot`)."""
+        from . import snapshot
+
+        return snapshot.dump(self.outer, self.layers)
+
+    @classmethod
+    def restore(cls, data: bytes) -> Site:
+        """Rebuild a site from `snapshot()` bytes. Raises ValueError on an unreadable snapshot."""
+        from . import snapshot
+
+        outer, layers = snapshot.load(data)
+        return cls(outer, layers)
+
     @property
     def key(self) -> str:
         lon, lat = self.outer.centroid_lonlat
