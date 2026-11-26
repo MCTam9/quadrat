@@ -1,5 +1,6 @@
 "use client";
 
+import { Logo } from "./Logo";
 import { useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from "react";
 import type { HeightShares } from "@/lib/buildings";
 import { num } from "@/lib/format";
@@ -105,7 +106,10 @@ export function SitePanel(p: Props) {
       <div id="site-panel-body" className="flex min-h-0 flex-1 flex-col">
         {!sq ? (
           <div className="p-4 text-sm leading-relaxed text-graphite">
-            <p className="wide text-2xl font-bold text-ink">Quadrat</p>
+            <p className="wide flex items-center gap-2.5 text-2xl font-bold text-ink">
+              <Logo size={30} />
+              Quadrat
+            </p>
             <p className="mb-2 mt-3 font-semibold text-ink">Pick a site</p>
             Search for a place, then click the map to drop a square. Drag the centre to move it and the red corner grips to resize.
             Live analysis and a building preview appear before you download anything.
