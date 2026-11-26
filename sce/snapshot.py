@@ -4,8 +4,9 @@ Layout of the zip:
 
 - `manifest.json`: format version, the outer AOI and per-layer metadata (provider,
   coverage, degraded, notes, findings, sources, raster description).
-- `<layer>/gdf.parquet`: vector layers as GeoParquet (CRS kept). Frames pyarrow cannot
-  encode (mixed-type columns from raw OSM tags) fall back to `gdf.pkl`.
+- `<layer>/gdf.pkl`: vector layers as pickled GeoDataFrames (CRS kept; shapely 2 pickles
+  geometries as WKB). Raw OSM tags make mixed-type columns that Parquet cannot hold, and this
+  keeps pyarrow out of the hosted API.
 - `<layer>/raster.tif`: raster layers as DEFLATE GeoTIFF. The true-north "inside" mask is
   derived from the raster's square, so it is rebuilt rather than stored.
 - `<layer>/data.pkl`: `LayerResult.data` (street graph, climate series, summaries). Pickle
@@ -24,7 +25,6 @@ import pickle
 import zipfile
 from typing import Any
 
-import geopandas as gpd
 import numpy as np
 from affine import Affine
 from pyproj import CRS
@@ -34,7 +34,7 @@ from .aoi import AOI
 from .raster import SiteRaster
 from .types import LayerResult, Source
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def _aoi_to_dict(aoi: AOI) -> dict[str, Any]:
@@ -114,21 +114,6 @@ def _raster_from(data: bytes, m: dict[str, Any]) -> SiteRaster:
     )
 
 
-def _gdf_bytes(gdf: gpd.GeoDataFrame) -> tuple[str, bytes]:
-    try:
-        buf = io.BytesIO()
-        gdf.to_parquet(buf, compression="zstd")
-        return "gdf.parquet", buf.getvalue()
-    except Exception:
-        return "gdf.pkl", pickle.dumps(gdf, protocol=5)
-
-
-def _gdf_from(name: str, data: bytes) -> gpd.GeoDataFrame:
-    if name.endswith(".parquet"):
-        return gpd.read_parquet(io.BytesIO(data))
-    return pickle.loads(data)
-
-
 def dump(outer: AOI, layers: dict[str, LayerResult]) -> bytes:
     manifest: dict[str, Any] = {"version": FORMAT_VERSION, "outer": _aoi_to_dict(outer), "layers": []}
     buf = io.BytesIO()
@@ -148,9 +133,8 @@ def dump(outer: AOI, layers: dict[str, LayerResult]) -> bytes:
                 "has_data": res.data is not None,
             }
             if res.gdf is not None:
-                fname, payload = _gdf_bytes(res.gdf)
-                zf.writestr(f"{name}/{fname}", payload, compress_type=zipfile.ZIP_STORED)
-                entry["gdf"] = fname
+                zf.writestr(f"{name}/gdf.pkl", pickle.dumps(res.gdf, protocol=5))
+                entry["gdf"] = "gdf.pkl"
             if res.raster is not None:
                 payload, entry["raster"] = _raster_bytes(res.raster)
                 zf.writestr(f"{name}/raster.tif", payload, compress_type=zipfile.ZIP_STORED)
@@ -173,7 +157,7 @@ def load(data: bytes) -> tuple[AOI, dict[str, LayerResult]]:
             layers[name] = LayerResult(
                 layer=e["layer"],
                 provider=e["provider"],
-                gdf=_gdf_from(e["gdf"], zf.read(f"{name}/{e['gdf']}")) if e["gdf"] else None,
+                gdf=pickle.loads(zf.read(f"{name}/gdf.pkl")) if e["gdf"] else None,
                 raster=_raster_from(zf.read(f"{name}/raster.tif"), e["raster"]) if e["raster"] else None,
                 data=pickle.loads(zf.read(f"{name}/data.pkl")) if e["has_data"] else None,
                 sources=[Source(**s) for s in e["sources"]],
