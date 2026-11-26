@@ -21,7 +21,6 @@ dependencies = [
   "pandas>=2.2",
   "requests>=2.32",
   "networkx>=3.2",
-  "pyarrow>=17",
   "ezdxf>=1.3",
   "click>=8.1",
   # Decodes OpenFreeMap vector tiles (sce/providers/openfreemap_tiles.py). Core, not `web`:
@@ -34,6 +33,9 @@ dev = ["pytest>=8", "pytest-cov", "ruff", "httpx>=0.27"]
 rhino = ["rhino3dm>=8.9"]
 # GLB/OBJ meshes: triangulating footprints and terrain.
 mesh = ["trimesh>=4.4", "mapbox-earcut>=1.0"]
+# Overture Maps buildings fallback (sce/providers/overture_buildings.py). Optional: ~170 MB, so the
+# hosted API leaves it out and the provider simply does not register without it.
+overture = ["pyarrow>=17"]
 # The web API (api/main.py). Not needed for the CLI.
 web = ["fastapi>=0.115", "uvicorn>=0.30", "pyjwt[crypto]>=2.9"]
 

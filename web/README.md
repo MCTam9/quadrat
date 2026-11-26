@@ -84,6 +84,9 @@ With Clerk on, the whole app requires sign-in and shows only `<SignIn/>` at `/si
    or `CLERK_AUTHORIZED_PARTIES` (comma-separated origins, checked against the token's `azp` claim) if you use a
    custom Clerk domain or call the API from elsewhere.
    - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` if the build says the Python bundle is too large.
+   - The Python bundle is about 450 MB after `scripts/trim_site_packages.py` (it was ~670 MB before pyogrio and
+     pyarrow were dropped), under Vercel's 500 MB standard limit. The hosted API has no Overture fallback
+     (`sce[overture]` is CLI-only); buildings fall back from OSM to map tiles.
    - Optional: `SCE_CORS_ORIGINS` (comma-separated) if the API is called from another origin.
 4. Connect the GitHub repo (`vercel git connect`) so pushes deploy, or run `vercel deploy` for a preview.
    Check `/api/health`, then sign in and load a site.

@@ -80,6 +80,31 @@ def test_unreadable_snapshot_raises():
         Site.restore(b"junk")
 
 
+def test_previous_format_version_is_a_miss(site):
+    import io
+    import zipfile
+
+    blob = site.snapshot()
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(blob)) as src, zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "manifest.json":
+                data = json.dumps({**json.loads(data), "version": 1}).encode()
+            dst.writestr(item, data)
+    with pytest.raises(ValueError, match="unsupported snapshot version"):
+        Site.restore(out.getvalue())
+
+
+def test_vector_layers_are_pickled_not_parquet(site):
+    import io
+    import zipfile
+
+    names = zipfile.ZipFile(io.BytesIO(site.snapshot())).namelist()
+    assert any(n.endswith("/gdf.pkl") for n in names)
+    assert not any(n.endswith(".parquet") for n in names)
+
+
 def test_local_store_round_trip(tmp_path):
     st = LocalStore(tmp_path)
     assert st.get("-0.1,51.5,1500") is None

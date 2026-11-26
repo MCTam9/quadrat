@@ -68,7 +68,8 @@ def fake_osm(monkeypatch, *, gate: threading.Event | None = None, fail: bool = F
             return _real(layer, a)
 
         monkeypatch.setattr(REGISTRY.provider(f"osm_{layer}"), "fetch", fetch)
-    monkeypatch.setattr(REGISTRY.provider("overture_buildings"), "available", lambda a: False)
+    if (overture := REGISTRY.provider("overture_buildings")) is not None:  # optional extra
+        monkeypatch.setattr(overture, "available", lambda a: False)
 
 
 class Recorder:

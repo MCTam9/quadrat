@@ -25,7 +25,7 @@ jobs:
           cache: pip
 
       - name: Install package and dev dependencies
-        run: pip install -e ".[dev,mesh,web]"
+        run: pip install -e ".[dev,mesh,web,overture]"
 
       - name: Lint (ruff)
         run: ruff check .

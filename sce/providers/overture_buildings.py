@@ -5,17 +5,20 @@ buildings theme conflates OSM with Microsoft/Google building-footprint
 datasets, so it can carry a height where OSM has none. Read directly from the
 public S3 bucket as GeoParquet — no `overturemaps` CLI dependency, since the
 contract says not to add one.
+
+pyarrow is optional (`pip install 'sce[overture]'`) because it is ~170 MB and the hosted API
+does not ship it. It is imported inside the functions that need it, and the provider only
+registers when pyarrow is installed, so without it the building chain is OSM, then tiles.
 """
 
 from __future__ import annotations
 
+import importlib.util
+
 import geopandas as gpd
-import pyarrow.compute as pc
-import pyarrow.dataset as ds
-import pyarrow.fs as fs
 import shapely
 
-from ..registry import REGISTRY
+from ..registry import REGISTRY, Registry
 from ..types import LayerResult, Provider, Source
 from ._buildings import summarise_building_heights
 from ._height import LEVEL_HEIGHT_M
@@ -28,7 +31,9 @@ THEME_PATH = "theme=buildings/type=building"
 LICENCE_URL = "https://docs.overturemaps.org/attribution/"
 
 
-def _resolve_release(s3: fs.S3FileSystem) -> str:
+def _resolve_release(s3) -> str:
+    import pyarrow.fs as fs
+
     try:
         infos = s3.get_file_info(fs.FileSelector(f"{BUCKET}/release", recursive=False))
         releases = sorted(
@@ -62,6 +67,10 @@ class OvertureBuildingsProvider(Provider):
         return True
 
     def fetch(self, aoi, cache) -> LayerResult:
+        import pyarrow.compute as pc
+        import pyarrow.dataset as ds
+        import pyarrow.fs as fs
+
         w, s, e, n = aoi.bbox_wgs84
         try:
             s3 = fs.S3FileSystem(anonymous=True, region="us-west-2")
@@ -118,4 +127,10 @@ class OvertureBuildingsProvider(Provider):
         return summarise_building_heights(result)
 
 
-REGISTRY.register(OvertureBuildingsProvider())
+def register(registry: Registry) -> None:
+    """Add the provider only when pyarrow is importable (it is an optional extra)."""
+    if importlib.util.find_spec("pyarrow") is not None:
+        registry.register(OvertureBuildingsProvider())
+
+
+register(REGISTRY)
