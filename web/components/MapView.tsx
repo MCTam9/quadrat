@@ -265,6 +265,11 @@ export default function MapView(props: Props) {
         id: "square-line", type: "line", source: "square",
         paint: { "line-color": RED_LINE, "line-width": 2 },
       });
+      // Grabbing anywhere on the red line resizes, like a corner grip.
+      map.addLayer({
+        id: "square-hit", type: "line", source: "square",
+        paint: { "line-color": "#000000", "line-width": 16, "line-opacity": 0 },
+      });
       // Invisible, generous hit targets so grips stay reachable by touch.
       map.addLayer({
         id: "handles-hit", type: "circle", source: "handles",
@@ -321,14 +326,25 @@ export default function MapView(props: Props) {
     };
     map.on("mousedown", "handles-hit", filtered);
     map.on("touchstart", "handles-hit", filtered);
+    // The line also passes under the corner grips; there the grip's own handler already started.
+    const edge = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
+      if (map.queryRenderedFeatures(e.point, { layers: ["handles-hit"] }).length) return;
+      start("corner")(e);
+    };
+    map.on("mousedown", "square-hit", edge);
+    map.on("touchstart", "square-hit", edge);
+    map.on("mouseenter", "square-hit", () => !dragging && (map.getCanvas().style.cursor = "nwse-resize"));
+    map.on("mouseleave", "square-hit", () => !dragging && (map.getCanvas().style.cursor = ""));
     map.on("mousemove", move);
     map.on("touchmove", move);
     map.on("mouseup", end);
     map.on("touchend", end);
     map.on("mouseenter", "handles-hit", () => !dragging && (map.getCanvas().style.cursor = "grab"));
     map.on("mouseleave", "handles-hit", () => !dragging && (map.getCanvas().style.cursor = ""));
+    // A click only places the first square. After that the site moves by dragging its centre or
+    // through search, so a stray click while panning never throws away a loaded site.
     map.on("click", (e) => {
-      if (justDragged) return;
+      if (justDragged || latest.current.square) return;
       latest.current.onPlace(e.lngLat.lng, e.lngLat.lat);
     });
 

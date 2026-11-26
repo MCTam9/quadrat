@@ -50,6 +50,7 @@ const WORLD = { lon: 10, lat: 30, zoom: 1.6 };
 interface Toast {
   id: number;
   msg: string;
+  action?: { label: string; run: () => void };
 }
 
 export function Picker() {
@@ -93,10 +94,11 @@ export function Picker() {
   const loadedRef = useRef<ReadyEvent | null>(null);
   const loadedAt = useRef<{ lon: number; lat: number } | null>(null);
 
-  const toast = useCallback((msg: string) => {
+  const toast = useCallback((msg: string, action?: Toast["action"]) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+    setToasts((t) => [...t, { id, msg, action }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 8000 : 6000);
+    return id;
   }, []);
 
   // initial state from URL
@@ -145,6 +147,29 @@ export function Picker() {
       return s;
     });
   }, []);
+
+  // Moving the site is the one change that can mean a long reload, so every move offers an undo.
+  // Resizing keeps the centre and never asks.
+  const lastSettled = useRef<SquareState | null>(null);
+  const undoing = useRef(false);
+  useEffect(() => {
+    const prev = lastSettled.current;
+    lastSettled.current = settled;
+    if (!settled || !prev || undoing.current) {
+      undoing.current = false;
+      return;
+    }
+    if (prev.lon === settled.lon && prev.lat === settled.lat) return;
+    toast("Site moved", {
+      label: "Undo",
+      run: () => {
+        undoing.current = true;
+        setSquare(prev);
+        setSettled(prev);
+        setFlyTo({ lon: prev.lon, lat: prev.lat, zoom: zoomToFit(prev.halfWidthM, prev.lat, Math.min(window.innerWidth, window.innerHeight)), nonce: Date.now() });
+      },
+    });
+  }, [settled, toast]);
 
   const halfRef = useRef(DEFAULT_HALF);
   useEffect(() => {
@@ -418,8 +443,20 @@ export function Picker() {
 
       <div className="pointer-events-none absolute inset-x-3 bottom-[calc(var(--peek)+1rem)] z-30 flex flex-col items-center gap-2 sm:bottom-6" role="status" aria-live="assertive">
         {toasts.map((t) => (
-          <div key={t.id} className="pointer-events-auto sheet max-w-sm border-red-line px-4 py-2 text-sm">
+          <div key={t.id} className="pointer-events-auto sheet flex max-w-sm items-center gap-4 border-red-line px-4 py-2 text-sm">
             {t.msg}
+            {t.action && (
+              <button
+                type="button"
+                className="font-semibold underline underline-offset-2 hover:no-underline"
+                onClick={() => {
+                  t.action?.run();
+                  setToasts((all) => all.filter((x) => x.id !== t.id));
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>
