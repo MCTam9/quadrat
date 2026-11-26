@@ -146,8 +146,14 @@ Type hints, `from __future__ import annotations`, no comments that restate the
 code, docstrings that explain *why*. Line length 110 (ruff; CI also runs `ruff format --check`). No new dependencies
 without saying so. Prefer stdlib and what is already installed:
 osmnx 2.1.1, geopandas 1.1.4, shapely 2.x, pyproj, rasterio 1.5.1, matplotlib,
-numpy, pandas, requests, networkx, pyarrow, ezdxf 1.4.4, click. Optional extras:
-`[rhino]` rhino3dm, `[mesh]` trimesh + mapbox-earcut, `[web]` fastapi, uvicorn, pyjwt.
+numpy, pandas, requests, networkx, ezdxf 1.4.4, click. Optional extras:
+`[rhino]` rhino3dm, `[mesh]` trimesh + mapbox-earcut, `[web]` fastapi, uvicorn, pyjwt, `[overture]` pyarrow (Overture buildings fallback; the provider
+registers only when it is installed, and the hosted API does not ship it).
+
+GeoPackages are written by `sce/export/gpkg_writer.py` (stdlib sqlite3). Do not call `to_file` /
+`read_file` or import pyogrio under `sce/` or `api/`: the API bundle deletes pyogrio
+(`scripts/trim_site_packages.py`) and a meta test enforces it. Tests may use pyogrio to validate files.
+Snapshots (`sce/snapshot.py`) pickle GeoDataFrames rather than use GeoParquet, for the same reason.
 
 ## Tests
 

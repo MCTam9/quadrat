@@ -86,6 +86,7 @@ set the app runs without sign-in and shows a "Dev mode" pill. Check the API with
 | `pip install -e ".[rhino]"` | `.3dm` export (rhino3dm) |
 | `pip install -e ".[mesh]"` | `.glb` and `.obj` export (trimesh, mapbox-earcut) |
 | `pip install -e ".[web]"` | FastAPI, uvicorn, PyJWT for `api/` |
+| `pip install -e ".[overture]"` | Overture Maps buildings fallback (pyarrow). Not on the hosted API |
 
 ## Data sources
 
@@ -95,7 +96,7 @@ generated from the provider registry rather than written by hand.
 
 | Layer | Source | Licence | Coverage |
 |---|---|---|---|
-| Buildings | OpenStreetMap (Overpass), then Overture Maps | ODbL | Global |
+| Buildings | OpenStreetMap (Overpass), then Overture Maps (needs `sce[overture]`), then map tiles | ODbL | Global |
 | Streets, land use, amenities | OpenStreetMap | ODbL | Global |
 | Building heights (fallback) | Global Human Settlement Layer (GHSL) | CC BY 4.0 | Global, about 100 m |
 | Building heights (measured) | Environment Agency 1 m LiDAR | OGL v3.0 | England only |
@@ -133,7 +134,7 @@ or ticked in the web app's download panel, which returns them as one ZIP.
 |---|---|---|
 | always | `<site>.pdf` | A3 landscape vector sheet, figure-ground dominant |
 | `json` / always | `<site>.dossier.json` | Every metric, source, licence, retrieval date and git SHA |
-| `gpkg` | `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, plus QGIS `.qml` styles |
+| `gpkg` | `<site>.gpkg` | Layered GeoPackage in the site's metric CRS, plus QGIS `.qml` styles. Written by a built-in sqlite3 writer, no GDAL needed |
 | `dxf` | `<site>.dxf` | Real-world metres, layered for AutoCAD, Rhino, Revit, Vectorworks |
 | `3dm` | `<site>.3dm` | Rhino model: buildings with known heights as solids, the rest as flat curves (needs `[rhino]`) |
 | `svg` | `<site>.svg` | Plan drawing, 1 unit = 1 m, one group per CAD layer |
