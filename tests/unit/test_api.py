@@ -126,6 +126,34 @@ def test_bad_claims_rejected(rsa_auth, over):
     assert r.status_code == 401
 
 
+def test_issuer_and_jwks_come_from_the_publishable_key(monkeypatch):
+    import base64
+
+    pk = "pk_test_" + base64.b64encode(b"able-mole-12.clerk.accounts.dev$").decode().rstrip("=")
+    for k in ("CLERK_ISSUER", "CLERK_JWKS_URL", "CLERK_PUBLISHABLE_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", pk)
+    assert api_main._clerk_issuer() == "https://able-mole-12.clerk.accounts.dev"
+    assert api_main._jwks_url() == "https://able-mole-12.clerk.accounts.dev/.well-known/jwks.json"
+    monkeypatch.setenv("CLERK_ISSUER", "https://clerk.custom.example")
+    assert api_main._clerk_issuer() == "https://clerk.custom.example"
+
+
+def test_garbage_publishable_key_gives_no_issuer():
+    assert api_main._issuer_from_publishable_key("pk_test_%%%") is None
+    assert api_main._issuer_from_publishable_key("nonsense") is None
+
+
+def test_authorized_parties_default_to_this_deployment(monkeypatch):
+    monkeypatch.delenv("CLERK_AUTHORIZED_PARTIES", raising=False)
+    monkeypatch.setenv("VERCEL_URL", "quadrat-abc.vercel.app")
+    monkeypatch.setenv("VERCEL_PROJECT_PRODUCTION_URL", "quadrat.vercel.app")
+    monkeypatch.delenv("VERCEL_BRANCH_URL", raising=False)
+    assert api_main._authorized_parties() == ["https://quadrat-abc.vercel.app", "https://quadrat.vercel.app"]
+    monkeypatch.setenv("CLERK_AUTHORIZED_PARTIES", "https://a.example, https://b.example")
+    assert api_main._authorized_parties() == ["https://a.example", "https://b.example"]
+
+
 def test_load_streams_layers_then_ready(client, calls):
     ev = _events(_load(client).text)
     kinds = [k for k, _ in ev]

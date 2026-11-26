@@ -13,6 +13,7 @@ routes answer 409 `{"error": "reload"}` and the frontend re-runs `/api/load`.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -59,9 +60,47 @@ def _auth_disabled() -> bool:
     return os.environ.get("SCE_AUTH_DISABLED") == "1"
 
 
+def _issuer_from_publishable_key(pk: str) -> str | None:
+    """Clerk's Frontend API origin, encoded in the publishable key: `pk_<env>_<base64("<host>$")>`."""
+    try:
+        _, _, encoded = pk.split("_", 2)
+        host = base64.b64decode(encoded + "=" * (-len(encoded) % 4)).decode().rstrip("$")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return f"https://{host}" if host and "." in host and "/" not in host else None
+
+
+def _clerk_issuer() -> str | None:
+    """CLERK_ISSUER, else derived from the publishable key the Clerk integration provisions."""
+    explicit = os.environ.get("CLERK_ISSUER")
+    if explicit:
+        return explicit
+    pk = os.environ.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY") or os.environ.get("CLERK_PUBLISHABLE_KEY") or ""
+    return _issuer_from_publishable_key(pk) if pk else None
+
+
+def _jwks_url() -> str:
+    url = os.environ.get("CLERK_JWKS_URL")
+    if url:
+        return url
+    issuer = _clerk_issuer()
+    if not issuer:
+        raise KeyError("CLERK_JWKS_URL or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY")
+    return issuer.rstrip("/") + "/.well-known/jwks.json"
+
+
+def _authorized_parties() -> list[str]:
+    """CLERK_AUTHORIZED_PARTIES, else this deployment's own origins on Vercel (web and API share them)."""
+    parties = [p.strip() for p in os.environ.get("CLERK_AUTHORIZED_PARTIES", "").split(",") if p.strip()]
+    if parties:
+        return parties
+    hosts = (os.environ.get(k) for k in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"))
+    return [f"https://{h}" for h in hosts if h]
+
+
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
-    return jwt.PyJWKClient(os.environ["CLERK_JWKS_URL"], cache_keys=True)
+    return jwt.PyJWKClient(_jwks_url(), cache_keys=True)
 
 
 def _unauthorised(msg: str) -> HTTPException:
@@ -78,7 +117,7 @@ def require_auth(request: Request) -> None:
         raise _unauthorised("missing bearer token")
     try:
         key = _jwks_client().get_signing_key_from_jwt(token.strip()).key
-        issuer = os.environ.get("CLERK_ISSUER") or None
+        issuer = _clerk_issuer()
         claims = jwt.decode(
             token.strip(),
             key,
@@ -98,8 +137,7 @@ def require_auth(request: Request) -> None:
     except KeyError as exc:
         log.error("auth misconfigured: %s not set", exc)
         raise _unauthorised("auth not configured") from exc
-    parties = [p.strip() for p in os.environ.get("CLERK_AUTHORIZED_PARTIES", "").split(",")]
-    parties = [p for p in parties if p]
+    parties = _authorized_parties()
     if parties and claims.get("azp") not in parties:
         log.info("auth rejected: azp %r not authorised", claims.get("azp"))
         raise _unauthorised("unauthorised party")
