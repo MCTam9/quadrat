@@ -14,9 +14,21 @@
     "api": {
       "root": ".",
       "entrypoint": "api/main.py",
-      "installCommand": "pip install '.[rhino,mesh,web]' && \"$(dirname \"$(command -v pip)\")/python\" scripts/trim_site_packages.py",
+      "installCommand": "pip install '.[web]' && \"$(dirname \"$(command -v pip)\")/python\" scripts/trim_site_packages.py --profile site",
       "functions": {
         "api/main.py": {
+          "maxDuration": 300,
+          "excludeFiles": "{tests/**,out/**,web/**,docs/**,scripts/**,**/__pycache__/**}"
+        }
+      },
+      "ignoreCommand": "bash \"$(git rev-parse --show-toplevel)/scripts/vercel_ignore.sh\""
+    },
+    "export": {
+      "root": ".",
+      "entrypoint": "api/export.py",
+      "installCommand": "pip install '.[rhino,mesh,web]' && \"$(dirname \"$(command -v pip)\")/python\" scripts/trim_site_packages.py",
+      "functions": {
+        "api/export.py": {
           "maxDuration": 300,
           "excludeFiles": "{tests/**,out/**,web/**,docs/**,scripts/**,**/__pycache__/**}"
         }
@@ -25,6 +37,12 @@
     }
   },
   "rewrites": [
+    {
+      "source": "/api/export",
+      "destination": {
+        "service": "export"
+      }
+    },
     {
       "source": "/api/(.*)",
       "destination": {
