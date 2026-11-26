@@ -31,18 +31,13 @@ def contour_segments(
 ) -> list[tuple[float, list[tuple[float, float]]]]:
     """(elevation, [(x, y), ...]) pairs in metric coordinates.
 
-    `matplotlib.contour.ContourSet.allsegs` returns, per requested level, a
-    list of (N, 2) arrays already in whatever coordinate system X/Y were
-    given in, so building X/Y from the affine transform up front means the
-    contour vertices come out already in metric CRS coordinates, no separate
-    reprojection step needed. `allsegs` is deprecated in newer matplotlib but
-    still present in 3.11.x; if a future upgrade removes it, `get_paths()` is
-    the fallback.
+    X/Y are built from the affine transform up front, so contour vertices come out
+    already in metric CRS coordinates with no separate reprojection step. Traced
+    with contourpy using the "mpl2014" algorithm, which is what matplotlib's
+    `ax.contour` runs, so the lines match what matplotlib drew before; using it
+    directly keeps matplotlib (PDF sheet only) out of the site API's bundle.
     """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    import contourpy
 
     rows, cols = array.shape
     row_idx, col_idx = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
@@ -59,25 +54,18 @@ def contour_segments(
     if not levels:
         return []
 
-    fig, ax = plt.subplots()
-    try:
-        cs = ax.contour(xs, ys, array, levels=levels)
-        out: list[tuple[float, list[tuple[float, float]]]] = []
-        if hasattr(cs, "allsegs"):
-            for level, segs in zip(cs.levels, cs.allsegs, strict=False):
-                out.extend(
-                    (float(level), [(float(x), float(y)) for x, y in seg]) for seg in segs if len(seg) >= 2
-                )
-        else:  # pragma: no cover - fallback for matplotlib >= 3.10 collections removal
-            for level, path in zip(cs.levels, cs.get_paths(), strict=False):
-                out.extend(
-                    (float(level), [(float(x), float(y)) for x, y in polygon])
-                    for polygon in path.to_polygons()
-                    if len(polygon) >= 2
-                )
-        return out
-    finally:
-        plt.close(fig)
+    gen = contourpy.contour_generator(
+        np.asarray(xs, dtype=float),
+        np.asarray(ys, dtype=float),
+        np.ma.masked_invalid(np.asarray(array, dtype=float)),
+        name="mpl2014",
+        line_type=contourpy.LineType.SeparateCode,
+    )
+    out: list[tuple[float, list[tuple[float, float]]]] = []
+    for level in levels:
+        segs, _codes = gen.lines(level)  # mpl2014 only offers SeparateCode; codes are not needed
+        out.extend((float(level), [(float(x), float(y)) for x, y in seg]) for seg in segs if len(seg) >= 2)
+    return out
 
 
 def terrain_contours(result: Any) -> list[tuple[float, list[tuple[float, float]]]]:
