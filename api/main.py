@@ -201,8 +201,15 @@ def _restore(key: str | None) -> Site | None:
         return None
 
 
+SNAPSHOT_WAIT_S = 15.0
+
+
 def _save_snapshot(site: Site) -> None:
-    """Write `site` to the store on a background thread, so `ready` is never delayed."""
+    """Write `site` to the store, waiting at most SNAPSHOT_WAIT_S. Never raises.
+
+    Synchronous on purpose: once the response ends Vercel may freeze the instance and lose a
+    background upload. Callers run this on the load worker thread, so SSE pings keep flowing.
+    """
     store = STORE
     if store is None:
         return
@@ -213,7 +220,11 @@ def _save_snapshot(site: Site) -> None:
         except Exception:
             log.warning("snapshot write failed for %s", site.key, exc_info=True)
 
-    threading.Thread(target=run, name="sce-snapshot", daemon=True).start()
+    thread = threading.Thread(target=run, name="sce-snapshot", daemon=True)
+    thread.start()
+    thread.join(SNAPSHOT_WAIT_S)
+    if thread.is_alive():
+        log.warning("snapshot write for %s still running after %.0f s; continuing", site.key, SNAPSHOT_WAIT_S)
 
 
 def _lookup(key: str | None) -> Site | None:
@@ -356,8 +367,8 @@ async def load(req: LoadRequest) -> StreamingResponse:
                 return
             site = Site.load(req.lon, req.lat, req.half_width_m, on_layer=on_layer)
             SITES.put(site)
+            _save_snapshot(site)  # before `ready`: see _save_snapshot
             emit("ready", site.ready())
-            _save_snapshot(site)
         except Exception:
             log.exception("load failed")
             emit("error", {"error": "could not load data for this location"})

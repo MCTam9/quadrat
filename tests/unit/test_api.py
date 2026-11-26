@@ -25,18 +25,18 @@ SID = api_main.site_key(LON, LAT)  # no half_width_m on load -> maximum padding
 
 
 class MemoryStore:
-    """In-memory snapshot store; `wrote` fires when the background write lands."""
+    """In-memory snapshot store that counts writes."""
 
     def __init__(self):
         self.blobs: dict[str, bytes] = {}
-        self.wrote = threading.Event()
+        self.puts = 0
 
     def get(self, key):
         return self.blobs.get(key)
 
     def put(self, key, data):
         self.blobs[key] = data
-        self.wrote.set()
+        self.puts += 1
 
 
 @pytest.fixture
@@ -340,7 +340,7 @@ def test_padded_fetch_scales_with_square(client):
 
 def test_load_writes_a_snapshot_and_a_cold_instance_restores_it(client, store):
     _load(client)
-    assert store.wrote.wait(10)
+    assert store.puts == 1  # written before `ready`
     warm = client.post("/api/analyse", json=_body()).json()
     api_main.SITES.clear()
     r = client.post("/api/analyse", json=_body())
@@ -356,12 +356,12 @@ def test_unknown_site_is_still_409(client):
 
 def test_load_of_a_stored_site_skips_the_fetch(client, store, calls):
     _load(client)
-    assert store.wrote.wait(10)
+    assert store.puts == 1  # written before `ready`
     n = len(calls)
     api_main.SITES.clear()
     r = _load(client)
     events = _events(r.text)
-    assert len(calls) == n
+    assert len(calls) == n and store.puts == 1  # a restored site is not written back
     assert events[-1][0] == "ready" and events[-1][1]["site_id"] == SID
     assert {d["layer"] for e, d in events if e == "layer"} >= {"buildings", "terrain", "streets"}
 
@@ -382,3 +382,14 @@ def test_store_failures_are_swallowed(client, store, monkeypatch):
 def test_corrupt_snapshot_is_a_miss(client, store):
     store.blobs[SID] = b"not a zip"
     assert client.post("/api/analyse", json=_body()).status_code == 409
+
+
+def test_slow_snapshot_write_is_capped_and_ready_still_arrives(client, store, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(api_main, "SNAPSHOT_WAIT_S", 0.2)
+    monkeypatch.setattr(store, "put", lambda key, data: release.wait(10))
+    try:
+        r = _load(client)
+        assert _events(r.text)[-1][0] == "ready"
+    finally:
+        release.set()
