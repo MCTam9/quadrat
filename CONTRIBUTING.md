@@ -103,8 +103,9 @@ invent a number: when coverage is too low, return None and report the coverage.
 ## Pipeline, clipping and exports
 
 - `sce/pipeline.py` — the report sequence shared by the CLI and `api/main.py`:
-  `build_aoi`, `fetch_layers` (osmnx layers run serially because osmnx settings
-  are global; the rest run in threads), `analyse`, `run_report`, and the
+  `build_aoi`, `fetch_layers` (streets, and buildings+landuse+amenities which share
+  one Overpass query via `shared_features`, run as two workers; osmnx's global settings are
+  guarded by a gate in `_overpass.py`; the rest run in threads, and it records per-layer ms), `analyse`, `run_report`, and the
   `EXPORTERS` table. A new export format is one writer in `sce/export/` with the
   signature `write_x(path, layers, aoi) -> Path` plus one `EXPORTERS` entry; the
   CLI `--export` choices and the web API pick it up from there.

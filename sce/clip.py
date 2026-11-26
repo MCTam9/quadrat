@@ -45,6 +45,16 @@ def _clip_graph(graph: Any, inner: AOI) -> Any:
         return graph.subgraph([]).copy()
 
 
+def _overlaps(raster: Any, inner: AOI) -> bool:
+    """True when the raster's extent and the square's bounding box share any area."""
+    t = raster.transform
+    rows, cols = raster.shape
+    x0, x1 = sorted((t.c, t.c + cols * t.a))
+    y0, y1 = sorted((t.f, t.f + rows * t.e))
+    minx, miny, maxx, maxy = inner.bounds_metric
+    return minx < x1 and maxx > x0 and miny < y1 and maxy > y0
+
+
 def _clip_one(layer: str, result: LayerResult, inner: AOI) -> LayerResult:
     """Cut the geometry to `inner`; the owning provider re-summarises it for that square."""
     import sce.providers  # noqa: F401  (registers the providers so REGISTRY is populated)
@@ -77,6 +87,9 @@ def clip_layers(layers: dict[str, LayerResult], outer: AOI, inner: AOI) -> dict[
             continue
         if result.gdf is None and result.raster is None:
             out[name] = result
+            continue
+        if result.raster is not None and not _overlaps(result.raster, inner):
+            # Fetched for a smaller area (LiDAR: the first square plus its ring) that misses this square.
             continue
         out[name] = _clip_one(name, result, inner)
     return out

@@ -27,9 +27,10 @@ SID = api_main.site_key(LON, LAT)  # no half_width_m on load -> maximum padding
 def calls(monkeypatch):
     rec: list = []
 
-    def fake_fetch(aoi, cache, *a, on_layer=None, **kw):
-        rec.append(aoi)
-        layers = _layers(aoi)
+    def fake_fetch(aoi, cache, *a, on_layer=None, only=None, **kw):
+        if only is None or "buildings" in only:
+            rec.append(aoi)
+        layers = {k: v for k, v in _layers(aoi).items() if only is None or k in only}
         for name, res in layers.items():
             if on_layer:
                 on_layer(name, res)
@@ -173,7 +174,9 @@ def test_token_from_the_domain_the_user_opened(rsa_auth, monkeypatch, azp, statu
 def test_load_streams_layers_then_ready(client, calls):
     ev = _events(_load(client).text)
     kinds = [k for k, _ in ev]
-    assert kinds == ["layer"] * 6 + ["ready"]
+    assert kinds == ["layer"] * 5 + ["ready"]
+    assert "climate" not in {d["layer"] for k, d in ev if k == "layer"}
+    assert all(isinstance(d["ms"], int) and d["ms"] >= 0 for k, d in ev if k == "layer")
     bld = next(d for k, d in ev if k == "layer" and d["layer"] == "buildings")
     assert bld["features"] == 3 and bld["ok"]
     ready = ev[-1][1]
@@ -304,9 +307,30 @@ def test_lru_evicts_oldest():
 
 def test_padded_fetch_scales_with_square(client):
     assert api_main.padded_half_width(None) == 1500
-    assert api_main.padded_half_width(100) == 750
-    assert api_main.padded_half_width(600) == 1100
-    assert api_main.padded_half_width(1000) == 1500
+    assert api_main.padded_half_width(100) == 400  # 100 + 150 ring + 150 slack = 400, the floor
+    assert api_main.padded_half_width(50) == 400
+    assert api_main.padded_half_width(300) == 600
+    assert api_main.padded_half_width(600) == 900
+    assert api_main.padded_half_width(1000) == 1300
+    assert api_main.padded_half_width(1400) == 1500
     r = client.post("/api/load", json={"lon": LON, "lat": LAT, "half_width_m": 300})
     ready = [ln for ln in r.text.splitlines() if ln.startswith("data:")][-1]
-    assert '"padded_half_width_m": 800' in ready
+    assert '"padded_half_width_m": 600' in ready
+
+
+def test_json_routes_are_gzipped_when_the_client_accepts_it(client):
+    _load(client)
+    r = client.post("/api/preview", json=_body(), headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and r.headers["content-encoding"] == "gzip"
+    assert r.json()["square"]["type"] == "Feature"  # the client decoded it transparently
+    plain = client.post("/api/preview", json=_body(), headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers and plain.json() == r.json()
+
+
+def test_event_stream_is_never_gzipped(client):
+    """Gzip buffers; the load stream must reach the browser event by event."""
+    r = client.post("/api/load", json={"lon": LON, "lat": LAT}, headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and "content-encoding" not in r.headers
+    assert r.headers["content-type"].startswith("text/event-stream")
+    kinds = [k for k, _ in _events(r.text)]
+    assert kinds[-1] == "ready" and kinds.count("layer") == 5
