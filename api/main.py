@@ -89,12 +89,18 @@ def _jwks_url() -> str:
     return issuer.rstrip("/") + "/.well-known/jwks.json"
 
 
-def _authorized_parties() -> list[str]:
-    """CLERK_AUTHORIZED_PARTIES, else this deployment's own origins on Vercel (web and API share them)."""
+def _authorized_parties(request: Request | None = None) -> list[str]:
+    """CLERK_AUTHORIZED_PARTIES, else the origin the request arrived on plus this deployment's Vercel URLs.
+
+    The web app and the API share one origin, so a token minted by the page the user is on carries that
+    origin as `azp`, whichever of the project's domains or aliases they opened.
+    """
     parties = [p.strip() for p in os.environ.get("CLERK_AUTHORIZED_PARTIES", "").split(",") if p.strip()]
     if parties:
         return parties
-    hosts = (os.environ.get(k) for k in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"))
+    hosts = [os.environ.get(k) for k in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL")]
+    if request is not None:
+        hosts.append(request.headers.get("x-forwarded-host") or request.headers.get("host"))
     return [f"https://{h}" for h in hosts if h]
 
 
@@ -137,7 +143,7 @@ def require_auth(request: Request) -> None:
     except KeyError as exc:
         log.error("auth misconfigured: %s not set", exc)
         raise _unauthorised("auth not configured") from exc
-    parties = _authorized_parties()
+    parties = _authorized_parties(request)
     if parties and claims.get("azp") not in parties:
         log.info("auth rejected: azp %r not authorised", claims.get("azp"))
         raise _unauthorised("unauthorised party")
