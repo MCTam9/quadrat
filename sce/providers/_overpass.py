@@ -48,7 +48,7 @@ def configure_osmnx(cache: Any) -> None:
     ox.settings.use_cache = True
     (cache.root / "osmnx").mkdir(parents=True, exist_ok=True)
     ox.settings.requests_timeout = int(os.environ.get("SCE_OVERPASS_TIMEOUT", DEFAULT_TIMEOUT_S))
-    ox.settings.http_user_agent = "sce-site-context-report"
+    ox.settings.http_user_agent = "quadrat"
 
 
 class _SettingsGate:
