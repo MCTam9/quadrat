@@ -11,7 +11,7 @@
       "functions": {
         "api/main.py": {
           "maxDuration": 300,
-          "excludeFiles": "{tests/**,out/**,web/**,docs/**,**/__pycache__/**,**/site-packages/**/tests/**,**/site-packages/**/*.pyx,**/site-packages/**/*.pxd,**/site-packages/**/*.pyi,**/site-packages/**/*.h,**/site-packages/**/*.hpp,**/site-packages/**/*.c,**/site-packages/**/*.cpp,**/site-packages/pyarrow/include/**,**/site-packages/pyarrow/libarrow_flight*,**/site-packages/pyarrow/_flight*}"
+          "excludeFiles": "{{tests,out,web,docs}/**,**/__pycache__/**,**/site-packages/**/{tests/**,*.pyx,*.pxd,*.pyi,*.h,*.hpp,*.c,*.cpp},**/site-packages/pyarrow/{include/**,libarrow_flight*,_flight*}}"
         }
       }
     }
