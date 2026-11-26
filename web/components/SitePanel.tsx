@@ -111,7 +111,7 @@ export function SitePanel(p: Props) {
               Quadrat
             </p>
             <p className="mb-2 mt-3 font-semibold text-ink">Pick a site</p>
-            Search for a place, then click the map to drop a square. Drag the centre to move it and the red corner grips to resize.
+            Search for a place, or click the map to drop a square. Drag its centre to move it; drag a corner or the red line to resize.
             Live analysis and a building preview appear before you download anything.
           </div>
         ) : (
