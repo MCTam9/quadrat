@@ -154,6 +154,22 @@ def test_authorized_parties_default_to_this_deployment(monkeypatch):
     assert api_main._authorized_parties() == ["https://a.example", "https://b.example"]
 
 
+@pytest.mark.parametrize(
+    ("azp", "status"), [("https://quadrat-home.example", 200), ("https://evil.example", 401)]
+)
+def test_token_from_the_domain_the_user_opened(rsa_auth, monkeypatch, azp, status):
+    """Any domain or alias of the project works: the page's own origin is an authorised party."""
+    monkeypatch.delenv("CLERK_AUTHORIZED_PARTIES")
+    for k in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
+        monkeypatch.delenv(k, raising=False)
+    r = TestClient(api_main.app).post(
+        "/api/load",
+        json={"lon": LON, "lat": LAT},
+        headers={"Authorization": f"Bearer {rsa_auth(azp=azp)}", "x-forwarded-host": "quadrat-home.example"},
+    )
+    assert r.status_code == status
+
+
 def test_load_streams_layers_then_ready(client, calls):
     ev = _events(_load(client).text)
     kinds = [k for k, _ in ev]
