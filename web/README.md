@@ -74,19 +74,22 @@ With Clerk on, the whole app requires sign-in and shows only `<SignIn/>` at `/si
 `vercel.json` at the repo root deploys `web/` and the FastAPI app as one project using Vercel Services (beta).
 `/api/*` goes to the Python service and everything else to Next.js.
 
-1. Create a Clerk application on the free plan. Under **Restrictions**, enable **Restricted** sign-up mode
-   (invitation only; this is free, unlike the allowlist). Invite users from **Users > Invitations**.
-2. `vercel link` from the repo root, then set:
-   - Web: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
-   - API: `CLERK_JWKS_URL` (`https://<your-clerk-frontend-api>/.well-known/jwks.json`),
-     `CLERK_ISSUER` (`https://<your-clerk-frontend-api>`), `CLERK_AUTHORIZED_PARTIES` (comma-separated origins of
-     your deployment, checked against the token's `azp` claim).
-   - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1`: the geospatial Python stack may exceed the 500 MB standard bundle.
+1. `vercel link` from the repo root (the project is `quadrat`).
+2. Add Clerk from the Vercel Marketplace (`vercel integration add clerk`, free plan). It creates the Clerk
+   application and sets `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` for every environment.
+   In the Clerk dashboard, under **Restrictions**, set sign-up mode to **Restricted** (invitation only; free,
+   unlike the allowlist) and invite people from **Users > Invitations**.
+3. The API needs nothing else for auth: it reads Clerk's issuer and key URL from the publishable key, and on
+   Vercel it accepts tokens only from this deployment's own URLs. Override with `CLERK_ISSUER`, `CLERK_JWKS_URL`
+   or `CLERK_AUTHORIZED_PARTIES` (comma-separated origins, checked against the token's `azp` claim) if you use a
+   custom Clerk domain or call the API from elsewhere.
+   - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` if the build says the Python bundle is too large.
    - Optional: `SCE_CORS_ORIGINS` (comma-separated) if the API is called from another origin.
-3. `vercel deploy` for a preview. Check `/api/health`, then sign in and load a site.
+4. Connect the GitHub repo (`vercel git connect`) so pushes deploy, or run `vercel deploy` for a preview.
+   Check `/api/health`, then sign in and load a site.
 
 Do not set `SCE_AUTH_DISABLED=1` in production.
 
-Limits on Hobby: 300 s per request (a cold site load takes about a minute), 2 GB memory, one region. Fetched data is
+Limits: 300 s per request by default (Pro can raise it to 800 s) (a cold site load takes about a minute), 2 GB memory, one region. Fetched data is
 cached in each instance's `/tmp`. If a later request lands on a different instance, the API answers 409 and the UI
 reloads the site transparently.
