@@ -73,6 +73,9 @@ export const BLUEPRINT = "#161616";
 export interface MapPalette {
   /** "No colour": site buildings as solid ink. */
   ink: string;
+  /** "No colour" in 3D: pure black takes no shading, so walls and roofs merge into one blot. A dark
+   *  graphite keeps the site darkest on the map while lighting still separates the faces. */
+  massing: string;
   /** Context massing outside the square: pale graphite. */
   context: string;
   /** Building outline and text halo, the sheet colour. */
@@ -86,6 +89,7 @@ export interface MapPalette {
 export const PALETTE: Record<"light" | "dark", MapPalette> = {
   light: {
     ink: "#000000",
+    massing: "#5f635d",
     context: "#c3c5bf",
     halo: "#ffffff",
     outline: "#ffffff",
@@ -96,6 +100,7 @@ export const PALETTE: Record<"light" | "dark", MapPalette> = {
   },
   dark: {
     ink: "#ffffff",
+    massing: "#ffffff",
     context: "#5c5c5c",
     halo: BLUEPRINT,
     outline: "rgba(255,255,255,0.45)",
@@ -158,6 +163,11 @@ export function classifyBuilding(tag: unknown): BuildingType {
 }
 
 // ---- MapLibre colour expressions ----
+/** Colour for extruded site buildings: as in plan, except "No colour" uses the shadeable massing tone. */
+export function buildingColour3D(mode: ColourMode, dark = false): unknown[] | string {
+  return mode === "none" ? palette(dark).massing : buildingColour(mode, dark);
+}
+
 export function buildingColour(mode: ColourMode, dark = false): unknown[] | string {
   const pal = palette(dark);
   if (mode === "none") return pal.ink;

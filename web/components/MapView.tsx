@@ -8,6 +8,7 @@ import {
   BASEMAP,
   BLUEPRINT,
   buildingColour,
+  buildingColour3D,
   missingFilter,
   MISSING_LINE,
   CONSTRAINT_OTHER,
@@ -247,7 +248,7 @@ export default function MapView(props: Props) {
         id: "buildings-3d", type: "fill-extrusion", source: "buildings",
         filter: [">", ["get", "h"], 0],
         layout: { visibility: "none" },
-        paint: { "fill-extrusion-color": colorExpr as never, "fill-extrusion-height": ["get", "h"], "fill-extrusion-opacity": 1 },
+        paint: { "fill-extrusion-color": buildingColour3D(latest.current.mode, styleDark.current) as never, "fill-extrusion-height": ["get", "h"], "fill-extrusion-opacity": 1 },
       });
       map.addLayer({
         id: "contours-label", type: "symbol", source: "contours", filter: ["==", ["get", "major"], 1],
@@ -422,7 +423,7 @@ export default function MapView(props: Props) {
     const colour = buildingColour(p.mode, isDark) as never;
     map.setPaintProperty("buildings-fill", "fill-color", colour);
     map.setPaintProperty("buildings-fill", "fill-opacity", p.mode === "none" ? 1 : 0.92);
-    map.setPaintProperty("buildings-3d", "fill-extrusion-color", colour);
+    map.setPaintProperty("buildings-3d", "fill-extrusion-color", buildingColour3D(p.mode, isDark) as never);
     map.setFilter("buildings-missing", missingFilter(p.mode) as never);
     map.setFilter("buildings-missing-line", missingFilter(p.mode) as never);
     if (p.overlays.streets) {

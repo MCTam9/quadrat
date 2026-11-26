@@ -63,3 +63,11 @@ describe("dark palette", () => {
     }
   });
 });
+
+describe("3D massing", () => {
+  it("never extrudes pure black, which takes no shading", async () => {
+    const { buildingColour3D } = await import("./layers");
+    expect(buildingColour3D("none", false)).not.toBe("#000000");
+    expect(buildingColour3D("height", false)).toEqual((await import("./layers")).buildingColour("height", false));
+  });
+});
