@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import osmnx as ox
 import pandas as pd
 from shapely import make_valid
 from shapely.ops import unary_union
@@ -17,13 +16,15 @@ from shapely.ops import unary_union
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
 from ..vocab import landuse_class
-from ._overpass import configure_osmnx, with_overpass_fallback
+from ._overpass import configure_osmnx, register_feature_tags, shared_features
 
 TAGS: dict[str, object] = {
     "landuse": True,
     "leisure": ["park", "garden", "pitch"],
     "natural": ["water", "wood", "scrub"],
 }
+
+register_feature_tags("landuse", TAGS)
 
 
 def _classify(row: pd.Series) -> str:
@@ -44,7 +45,7 @@ class OsmLanduseProvider(Provider):
         configure_osmnx(cache)
 
         try:
-            gdf = with_overpass_fallback(ox.features.features_from_polygon, aoi.geometry_wgs84, tags=TAGS)
+            gdf = shared_features(aoi.geometry_wgs84, TAGS)
         except Exception as exc:
             raise RuntimeError(f"osm_landuse: Overpass query failed: {exc}") from exc
 

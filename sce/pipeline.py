@@ -8,6 +8,7 @@ prints progress.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,9 @@ LAYERS = (
     "constraints",
     "building_height",
 )
+
+# The web app loads everything but climate up front; climate is fetched when asked for.
+SITE_LAYERS = tuple(layer for layer in LAYERS if layer != "climate")
 
 LayerCallback = Callable[[str, LayerResult | None], None]
 
@@ -49,9 +53,13 @@ def build_aoi(coords: str | None, geojson: str | None, radius: float, name: str)
 
 
 # These go through osmnx, whose settings (endpoint, cache folder) are process
-# globals, so they must run one at a time. Everything else is independent
-# HTTP/tile I/O and runs concurrently alongside them.
-SERIAL_LAYERS = frozenset({"streets", "buildings", "landuse", "amenities"})
+# globals. Streets is its own Overpass query; buildings, landuse and amenities
+# share one (see `sce/providers/_overpass.py shared_features`), so the feature
+# layers run one after another in a single worker and hit that query once.
+# `with_overpass_fallback` serialises the settings changes behind a lock, so the
+# two groups can run side by side. Everything else is independent HTTP/tile I/O.
+OSM_FEATURE_LAYERS = ("buildings", "landuse", "amenities")
+OSM_GROUPS: tuple[tuple[str, ...], ...] = (("streets",), OSM_FEATURE_LAYERS)
 
 
 def fetch_layers(
@@ -63,6 +71,8 @@ def fetch_layers(
     on_layer: LayerCallback | None = None,
     *,
     parallel: bool = True,
+    timings: dict[str, int] | None = None,
+    height_focus: AOI | None = None,
 ) -> dict[str, LayerResult]:
     """Run every provider chain for the wanted layers.
 
@@ -70,6 +80,12 @@ def fetch_layers(
     report progress (the CLI prints, the API streams). With `parallel`, it may
     fire from worker threads and in completion order rather than LAYERS order;
     the returned dict is always in LAYERS order.
+
+    `timings`, when given, is filled with milliseconds per layer (plus
+    `heights` for the LiDAR enrichment). `height_focus`, a smaller AOI in the
+    same CRS, is what the `building_height` layer is fetched for: LiDAR tiles
+    are the slowest request, and only the requested square and its context ring
+    need heights.
     """
     import sce.providers  # noqa: F401  - registers providers
 
@@ -80,20 +96,40 @@ def fetch_layers(
     results: dict[str, LayerResult | None] = {}
 
     def one(layer: str) -> None:
+        started = time.perf_counter()
         result = REGISTRY.fetch(
-            layer, aoi, cache, override=override.get(layer), allow_non_commercial=allow_nc
+            layer,
+            height_focus if layer == "building_height" and height_focus is not None else aoi,
+            cache,
+            override=override.get(layer),
+            allow_non_commercial=allow_nc,
         )
         results[layer] = result
+        if timings is not None:
+            timings[layer] = round((time.perf_counter() - started) * 1000)
         if on_layer is not None:
             on_layer(layer, result)
 
     if parallel:
         from concurrent.futures import ThreadPoolExecutor
 
-        serial = [layer for layer in wanted if layer in SERIAL_LAYERS]
-        independent = [layer for layer in wanted if layer not in SERIAL_LAYERS]
-        with ThreadPoolExecutor(max_workers=1 + len(independent)) as pool:
-            futures = [pool.submit(lambda: [one(layer) for layer in serial])]
+        osm = {layer for group in OSM_GROUPS for layer in group}
+        groups = [[layer for layer in group if layer in wanted] for group in OSM_GROUPS]
+        groups = [g for g in groups if g]
+        independent = [layer for layer in wanted if layer not in osm]
+
+        def run_group(group: list[str]) -> None:
+            first: Exception | None = None
+            for layer in group:
+                try:
+                    one(layer)
+                except Exception as exc:
+                    first = first or exc
+            if first is not None:
+                raise first
+
+        with ThreadPoolExecutor(max_workers=len(groups) + len(independent)) as pool:
+            futures = [pool.submit(run_group, g) for g in groups]
             futures += [pool.submit(one, layer) for layer in independent]
             for f in futures:
                 f.result()
@@ -106,7 +142,11 @@ def fetch_layers(
     # measure the buildings OSM left without a height. A no-op elsewhere.
     from .heights import enrich_building_heights
 
-    return enrich_building_heights(layers)
+    started = time.perf_counter()
+    enriched = enrich_building_heights(layers)
+    if timings is not None:
+        timings["heights"] = round((time.perf_counter() - started) * 1000)
+    return enriched
 
 
 def _gpkg(out: Path, name: str, aoi: AOI, layers: dict, metrics: dict) -> list[Path]:

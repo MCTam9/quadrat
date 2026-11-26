@@ -3,7 +3,7 @@
 import { Logo } from "./Logo";
 import { useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from "react";
 import type { HeightShares } from "@/lib/buildings";
-import { num } from "@/lib/format";
+import { duration, num } from "@/lib/format";
 import { areaKm2, type SquareState } from "@/lib/square";
 import { formatCoords, type SiteName } from "@/lib/site-name";
 import type { Analysis, LayerEvent, Preview } from "@/lib/types";
@@ -132,7 +132,7 @@ export function SitePanel(p: Props) {
                 <CompletenessLine a={p.analysis} shares={p.shares} typeKnown={p.typeKnown} />
               </div>
 
-              <div className="sticky top-0 z-10 flex gap-5 bg-sheet px-4" role="tablist" aria-label="Panel" onKeyDown={onTabKey}>
+              <div className="sticky top-0 z-10 flex gap-5 border-b border-rule bg-sheet px-4" role="tablist" aria-label="Panel" onKeyDown={onTabKey}>
                 {TABS.map((t) => (
                   <button
                     key={t.id}
@@ -165,6 +165,7 @@ export function SitePanel(p: Props) {
                               <span className="ml-auto text-graphite nums">
                                 {l.provider ?? ""}
                                 {typeof l.features === "number" ? `, ${l.features}` : ""}
+                                {typeof l.ms === "number" ? ` · ${duration(l.ms)}` : ""}
                               </span>
                             </li>
                           ))}

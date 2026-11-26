@@ -7,6 +7,9 @@ Tashkent or Riyadh one, because `available()` gates this provider to GB.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
+
 import geopandas as gpd
 import pandas as pd
 import requests
@@ -46,9 +49,7 @@ class UkConstraintsProvider(Provider):
         w, s, e, n = aoi.bbox_wgs84
         wkt = f"POLYGON(({w} {s}, {e} {s}, {e} {n}, {w} {n}, {w} {s}))"
 
-        frames = []
-        sources = []
-        for dataset in DATASETS:
+        def one(dataset: str) -> tuple[Any, Source] | None:
             params = {
                 "dataset": dataset,
                 "geometry": wkt,
@@ -65,22 +66,26 @@ class UkConstraintsProvider(Provider):
             payload, meta = cache.get_json(key, _producer)
             features = payload.get("features", [])
             if not features:
-                continue
+                return None
             geoms = [shape(f["geometry"]) for f in features]
             props = [f.get("properties", {}) for f in features]
             gdf = gpd.GeoDataFrame(props, geometry=geoms, crs="EPSG:4326")
             gdf["dataset"] = dataset
-            frames.append(gdf)
-            sources.append(
-                Source(
-                    name=f"planning.data.gov.uk: {dataset}",
-                    url=meta.get("url", API_URL),
-                    licence=self.licence,
-                    licence_url="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-                    note=f"{len(features)} feature(s) intersecting the AOI bbox",
-                    commercial_ok=True,
-                )
+            source = Source(
+                name=f"planning.data.gov.uk: {dataset}",
+                url=meta.get("url", API_URL),
+                licence=self.licence,
+                licence_url="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+                note=f"{len(features)} feature(s) intersecting the AOI bbox",
+                commercial_ok=True,
             )
+            return gdf, source
+
+        # Independent HTTP requests: run together, keep DATASETS order in the output.
+        with ThreadPoolExecutor(max_workers=len(DATASETS)) as pool:
+            found = [r for r in pool.map(one, DATASETS) if r is not None]
+        frames = [gdf for gdf, _ in found]
+        sources = [src for _, src in found]
 
         if not frames:
             return LayerResult(

@@ -19,7 +19,7 @@ TOKEN = "vercel_blob_rw_AbC123_secretsecret"
 
 @pytest.fixture
 def site():
-    def fetch(aoi, cache, *, on_layer=None):
+    def fetch(aoi, cache, **kw):
         return site_layers(aoi)
 
     return Site.load(LON, LAT, 300.0, cache=object(), fetch=fetch)

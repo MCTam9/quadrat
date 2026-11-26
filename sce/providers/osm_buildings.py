@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import osmnx as ox
 import pandas as pd
 
 from ..registry import REGISTRY
 from ..types import LayerResult, Provider, Source
 from ._buildings import summarise_building_heights
 from ._height import height_and_source
-from ._overpass import configure_osmnx, with_overpass_fallback
+from ._overpass import configure_osmnx, register_feature_tags, shared_features
+
+TAGS: dict[str, object] = {"building": True}
+register_feature_tags("buildings", TAGS)
 
 
 class OsmBuildingsProvider(Provider):
@@ -33,9 +35,7 @@ class OsmBuildingsProvider(Provider):
         configure_osmnx(cache)
 
         try:
-            gdf = with_overpass_fallback(
-                ox.features.features_from_polygon, aoi.geometry_wgs84, tags={"building": True}
-            )
+            gdf = shared_features(aoi.geometry_wgs84, TAGS)
         except Exception as exc:
             raise RuntimeError(f"osm_buildings: Overpass query failed: {exc}") from exc
 

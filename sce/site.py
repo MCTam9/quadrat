@@ -14,8 +14,10 @@ with no network, through the same interface the API uses.
 
 from __future__ import annotations
 
+import logging
 import math
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
@@ -31,13 +33,18 @@ from .types import LayerResult
 # The padded fetch is sized to the square the user starts with, plus room to
 # drag. A fixed 3 km x 3 km fetch was too heavy for the public Overpass servers.
 PADDED_MAX_HALF_WIDTH_M = 1500.0
-PADDED_MIN_HALF_WIDTH_M = 750.0
-PADDED_MARGIN_M = 500.0
+PADDED_MIN_HALF_WIDTH_M = 400.0
 # Buildings drawn around the square for 3D context.
-CONTEXT_RING_M = 250.0
+CONTEXT_RING_M = 150.0
+# Room beyond the context ring so the square can be nudged without a reload.
+PADDED_SLACK_M = 150.0
 MAX_FEATURES = 20000
 
+log = logging.getLogger("sce.site")
+
 Fetch = Callable[..., dict[str, LayerResult]]
+# (layer, result or None, milliseconds the layer took)
+LoadCallback = Callable[[str, LayerResult | None, int], None]
 
 
 class OutsideSite(ValueError):
@@ -52,7 +59,8 @@ def padded_half_width(half_width_m: float | None) -> float:
     """Half-width of the padded fetch for a square of this half-width (None -> the maximum)."""
     if half_width_m is None:
         return PADDED_MAX_HALF_WIDTH_M
-    return min(PADDED_MAX_HALF_WIDTH_M, max(PADDED_MIN_HALF_WIDTH_M, half_width_m + PADDED_MARGIN_M))
+    wanted = half_width_m + CONTEXT_RING_M + PADDED_SLACK_M
+    return min(PADDED_MAX_HALF_WIDTH_M, max(PADDED_MIN_HALF_WIDTH_M, wanted))
 
 
 def site_key(lon: float, lat: float, padded_half_width_m: float = PADDED_MAX_HALF_WIDTH_M) -> str:
@@ -63,11 +71,25 @@ def site_key(lon: float, lat: float, padded_half_width_m: float = PADDED_MAX_HAL
 class Site:
     """Layers for one fetched area, and every view of any square inside it."""
 
-    def __init__(self, outer: AOI, layers: dict[str, LayerResult]) -> None:
+    def __init__(
+        self,
+        outer: AOI,
+        layers: dict[str, LayerResult],
+        *,
+        cache: Any = None,
+        fetch: Fetch | None = None,
+        timings: dict[str, int] | None = None,
+    ) -> None:
         self.outer = outer
         self.layers = layers
+        self.timings = timings or {}
+        self._cache = cache
+        self._fetch_fn = fetch
         self._views: OrderedDict[tuple[float, float, float], dict[str, LayerResult]] = OrderedDict()
         self._lock = threading.Lock()
+        self._key_locks: dict[tuple[float, float, float], threading.Lock] = {}
+        self._climate_lock = threading.Lock()
+        self._climate_layer: LayerResult | None = None
         self._climate: dict[str, Any] | None = None
 
     # -- construction --------------------------------------------------------
@@ -81,11 +103,19 @@ class Site:
         *,
         cache: Any = None,
         fetch: Fetch | None = None,
-        on_layer: Callable[[str, LayerResult | None], None] | None = None,
+        on_layer: LoadCallback | None = None,
     ) -> Site:
-        """Fetch a padded square around (lon, lat) once. Slow: this is the network step."""
+        """Fetch a padded square around (lon, lat) once. Slow: this is the network step.
+
+        Climate is not fetched here (`climate()` does it on demand), and LiDAR is
+        fetched only for the requested square plus its context ring.
+        """
         outer = AOI.from_point(lon, lat, padded_half_width(half_width_m), name="padded")
-        return cls._fetch(outer, cache, fetch, on_layer)
+        focus = None
+        if half_width_m is not None:
+            focus_m = min(outer.radius_m or 0.0, half_width_m + CONTEXT_RING_M)
+            focus = AOI.from_point(lon, lat, focus_m, name="height-focus", crs=outer.crs)
+        return cls._fetch(outer, cache, fetch, on_layer, focus=focus, layers=pipeline.SITE_LAYERS)
 
     @classmethod
     def for_square(
@@ -95,15 +125,51 @@ class Site:
         return cls._fetch(AOI.from_point(lon, lat, half_width_m, name="site"), cache, fetch, None)
 
     @classmethod
-    def _fetch(cls, outer: AOI, cache: Any, fetch: Fetch | None, on_layer: Any) -> Site:
+    def _fetch(
+        cls,
+        outer: AOI,
+        cache: Any,
+        fetch: Fetch | None,
+        on_layer: LoadCallback | None,
+        *,
+        focus: AOI | None = None,
+        layers: tuple[str, ...] | None = None,
+    ) -> Site:
         from .cache import Cache
 
         # Looked up at call time so tests can substitute sce.pipeline.fetch_layers.
         fetch = fetch or pipeline.fetch_layers
-        layers = fetch(outer, cache or Cache(), on_layer=on_layer)
-        if not layers:
+        cache = cache or Cache()
+        t0 = time.perf_counter()
+        timings: dict[str, int] = {}
+
+        def report(name: str, result: LayerResult | None) -> None:
+            # A fetcher that does not time itself still gets an elapsed-since-start figure.
+            ms = timings.get(name)
+            if ms is None:
+                ms = timings[name] = round((time.perf_counter() - t0) * 1000)
+            if on_layer is not None:
+                on_layer(name, result, ms)
+
+        kwargs: dict[str, Any] = {"on_layer": report, "timings": timings}
+        if layers is not None:
+            kwargs["only"] = list(layers)
+        if focus is not None:
+            kwargs["height_focus"] = focus
+        fetched = fetch(outer, cache, **kwargs)
+        total = round((time.perf_counter() - t0) * 1000)
+        lon, lat = outer.centroid_lonlat
+        log.info(
+            "site load %.5f,%.5f r=%.0f: %s total=%dms",
+            lon,
+            lat,
+            outer.radius_m or 0.0,
+            " ".join(f"{k}={v}ms" for k, v in timings.items()),
+            total,
+        )
+        if not fetched:
             raise NoData("no data available for this location")
-        return cls(outer, layers)
+        return cls(outer, fetched, cache=cache, fetch=fetch, timings={**timings, "total": total})
 
     def snapshot(self) -> bytes:
         """The outer square and every layer as one zip, for `sce.store` (see `sce.snapshot`)."""
@@ -152,19 +218,27 @@ class Site:
             if key in self._views:
                 self._views.move_to_end(key)
                 return self._views[key]
-        layers = clip_layers(self.layers, self.outer, square)
-        layers = _with_building_use(layers)
-        with self._lock:
-            self._views[key] = layers
-            while len(self._views) > 16:
-                self._views.popitem(last=False)
-        return layers
+            key_lock = self._key_locks.setdefault(key, threading.Lock())
+        # Per-square lock: concurrent analyse + preview wait for one clip instead of making two.
+        with key_lock:
+            with self._lock:
+                if key in self._views:
+                    self._views.move_to_end(key)
+                    return self._views[key]
+            layers = clip_layers(self.layers, self.outer, square)
+            layers = _with_building_use(layers)
+            with self._lock:
+                self._views[key] = layers
+                while len(self._views) > 16:
+                    self._views.popitem(last=False)
+                self._key_locks.pop(key, None)
+            return layers
 
     # -- views ---------------------------------------------------------------
 
     def analyse(self, square: AOI) -> dict[str, Any]:
         """Metrics, coverage assessment and per-layer provenance for `square` (JSON-safe)."""
-        layers = self.layers_for(square)
+        layers = self._with_climate(self.layers_for(square))
         metrics, assessment = pipeline.analyse(layers, square)
         return jsonable(
             {
@@ -206,13 +280,41 @@ class Site:
     def climate(self) -> dict[str, Any] | None:
         """Typical-year and monthly climate for the site, or None without climate data."""
         if self._climate is None:
-            layer = self.layers.get("climate")
+            layer = self.climate_layer()
             if layer is None or not (layer.data or {}).get("hourly"):
                 return None
             from .climate import climate_summary
 
             self._climate = jsonable(climate_summary(layer))
         return self._climate
+
+    def climate_layer(self) -> LayerResult | None:
+        """The climate layer, fetched on first use (it is not part of the load).
+
+        Climate is regional (one ERA5 grid point), so it is fetched for the site
+        centre once and shared by every square. A failed fetch is not remembered.
+        """
+        with self._climate_lock:
+            layer = self._climate_layer or self.layers.get("climate")
+            if layer is None:
+                from .cache import Cache
+
+                fetch = self._fetch_fn or pipeline.fetch_layers
+                got = fetch(self.outer, self._cache or Cache(), only=["climate"])
+                layer = got.get("climate") if got else None
+            self._climate_layer = layer
+            return layer
+
+    def _with_climate(self, layers: dict[str, LayerResult]) -> dict[str, LayerResult]:
+        """`layers` plus climate, for the views that report it. A climate failure never fails them."""
+        if "climate" in layers:
+            return layers
+        try:
+            climate = self.climate_layer()
+        except Exception:
+            log.warning("climate unavailable for this site", exc_info=True)
+            return layers
+        return layers if climate is None else {**layers, "climate": climate}
 
     def export(self, square: AOI, formats: list[str], out: Path, *, report: bool = True) -> list[Path]:
         """Write the chosen formats, the dossier, georef sidecars and a README into `out`.
@@ -224,7 +326,7 @@ class Site:
         unknown = [f for f in formats if f not in pipeline.EXPORTERS]
         if unknown:
             raise ValueError(f"unknown formats {unknown}; allowed: {sorted(pipeline.EXPORTERS)}")
-        layers = self.layers_for(square)
+        layers = self._with_climate(self.layers_for(square))
         written = pipeline.run_report(
             square, layers, out, list(dict.fromkeys(formats)), sheet=report, georef=True
         )

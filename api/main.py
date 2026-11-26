@@ -39,6 +39,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import Receive, Scope, Send
 
 import sce
 from sce.aoi import AOI
@@ -298,6 +300,27 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Quadrat API", lifespan=_lifespan, docs_url=None, redoc_url=None)
+
+
+class _SelectiveGZip(GZipMiddleware):
+    """GZip for the JSON routes only.
+
+    The `/api/load` event stream must reach the browser event by event, and the
+    export zip is already compressed. Newer Starlette skips both by content
+    type; this does not depend on the installed version doing so.
+    """
+
+    UNCOMPRESSED_PATHS = frozenset({"/api/load", "/api/export"})
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path") in self.UNCOMPRESSED_PATHS:
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+# Added first so CORS (added next) wraps it: CORS headers land on compressed responses too.
+app.add_middleware(_SelectiveGZip, minimum_size=1024)
 if CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -342,7 +365,7 @@ async def load(req: LoadRequest) -> StreamingResponse:
     def emit(event: str, data: Any) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, (event, data))
 
-    def on_layer(name: str, result: LayerResult | None) -> None:
+    def on_layer(name: str, result: LayerResult | None, ms: int) -> None:
         emit(
             "layer",
             jsonable(
@@ -352,6 +375,7 @@ async def load(req: LoadRequest) -> StreamingResponse:
                     "features": 0 if result is None or result.gdf is None else len(result.gdf),
                     "coverage": result.coverage if result else None,
                     "ok": result is not None,
+                    "ms": ms,
                 }
             ),
         )
@@ -362,7 +386,7 @@ async def load(req: LoadRequest) -> StreamingResponse:
             known = _lookup(key)
             if known is not None:
                 for name, result in known.layers.items():
-                    on_layer(name, result)
+                    on_layer(name, result, 0)
                 emit("ready", known.ready())
                 return
             site = Site.load(req.lon, req.lat, req.half_width_m, on_layer=on_layer)
