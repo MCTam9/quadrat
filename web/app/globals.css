@@ -3,6 +3,7 @@
 /* The drawing sheet. White sheet, black ink, one red line that only ever marks the site.
    Dark mode is the same drawing in white on charcoal, monochrome so data colours carry. */
 :root {
+  color-scheme: light;
   --sheet: #ffffff;
   --ink: #000000;
   --red-line: #e0261b;
@@ -30,30 +31,31 @@
   --wind-5: #000000;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sheet: #161616;
-    --ink: #ffffff;
-    --graphite: #a3a3a3;
-    --rule: #3a3a3a;
-    --hover: rgba(255, 255, 255, 0.09);
-    --edge: #8f8f8f;
+/* Dark is keyed on html[data-theme], which an inline script sets before paint from the viewer's
+   choice or, on "Auto", the OS. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --sheet: #161616;
+  --ink: #ffffff;
+  --graphite: #a3a3a3;
+  --rule: #3a3a3a;
+  --hover: rgba(255, 255, 255, 0.09);
+  --edge: #8f8f8f;
 
-    --ch-warm: #f2a367;
-    --ch-cool: #8fc1ee;
-    --ch-rain: #8fc1ee;
-    --ch-solar: #f2c14e;
-    --ch-ok: #7fcfa7;
-    --sun-jun: #fbbf24;
-    --sun-equ: #c4b5fd;
-    --sun-dec: #7dd3fc;
-    --wind-0: #4a4a4a;
-    --wind-1: #6e6e6e;
-    --wind-2: #959595;
-    --wind-3: #bdbdbd;
-    --wind-4: #e3e3e3;
-    --wind-5: #ffffff;
-  }
+  --ch-warm: #f2a367;
+  --ch-cool: #8fc1ee;
+  --ch-rain: #8fc1ee;
+  --ch-solar: #f2c14e;
+  --ch-ok: #7fcfa7;
+  --sun-jun: #fbbf24;
+  --sun-equ: #c4b5fd;
+  --sun-dec: #7dd3fc;
+  --wind-0: #4a4a4a;
+  --wind-1: #6e6e6e;
+  --wind-2: #959595;
+  --wind-3: #bdbdbd;
+  --wind-4: #e3e3e3;
+  --wind-5: #ffffff;
 }
 
 @theme inline {
@@ -178,11 +180,9 @@ input[type="radio"] {
   color: var(--ink);
   border-color: var(--ink);
 }
-@media (prefers-color-scheme: dark) {
-  .maplibregl-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
-  .maplibregl-map .maplibregl-ctrl-attrib-button {
-    filter: invert(1);
-  }
+[data-theme="dark"] .maplibregl-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
+[data-theme="dark"] .maplibregl-map .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
 }
 
 /* Missing data, one visual language everywhere: crimson hatch on rose,
