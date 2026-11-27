@@ -59,8 +59,22 @@ def figure_ground(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
         bld.gdf.plot(ax=ax, facecolor=S.BUILT, edgecolor="none", zorder=3)
 
     constraints_overlay(ax, layers)
+    site_line(ax, aoi)
     S.scale_bar(ax, aoi.bounds_metric[2] - aoi.bounds_metric[0])
     S.north_arrow(ax)
+
+
+def site_line(ax: Axes, aoi: AOI) -> None:
+    """The red line: the site boundary, as the web app draws it. The only red on the sheet.
+
+    Drawn from the AOI geometry, not the axes frame: a square picked on the web map is
+    slightly rotated in a UTM zone away from its central meridian.
+    """
+    geom = aoi.geometry
+    rings = [g.exterior for g in getattr(geom, "geoms", [geom])]
+    for ring in rings:
+        xs, ys = ring.xy
+        ax.plot(xs, ys, color=S.RED_LINE, lw=S.LW["bold"], zorder=25, clip_on=False, solid_joinstyle="miter")
 
 
 def constraints_overlay(ax: Axes, layers: dict[str, Any]) -> None:
@@ -80,18 +94,15 @@ def constraints_overlay(ax: Axes, layers: dict[str, Any]) -> None:
     datasets = sorted(gdf[column].dropna().unique()) if column else ["constraints"]
 
     handles = []
-    for i, name in enumerate(datasets):
+    for name in datasets:
         subset = gdf if column is None else gdf[gdf[column] == name]
         if not len(subset):
             continue
-        colour = S.CONSTRAINT_COLOURS[i % len(S.CONSTRAINT_COLOURS)]
-        dashes = S.CONSTRAINT_DASHES[i % len(S.CONSTRAINT_DASHES)]
+        label, colour, dashes = S.CONSTRAINT_STYLES.get(str(name), S.CONSTRAINT_OTHER)
+        if str(name) not in S.CONSTRAINT_STYLES and column is not None:
+            label = str(name).replace("-", " ").capitalize()
         subset.boundary.plot(ax=ax, color=colour, linewidth=S.LW["line"], linestyle=dashes, zorder=6)
-        handles.append(
-            mlines.Line2D(
-                [], [], color=colour, lw=S.LW["line"], linestyle=dashes, label=str(name).replace("-", " ")
-            )
-        )
+        handles.append(mlines.Line2D([], [], color=colour, lw=S.LW["line"], linestyle=dashes, label=label))
     if handles:
         ax.legend(
             handles=handles,
@@ -101,9 +112,10 @@ def constraints_overlay(ax: Axes, layers: dict[str, Any]) -> None:
             borderpad=0.5,
             labelspacing=0.35,
             facecolor=S.PAPER,
-            framealpha=0.85,
+            framealpha=1.0,
             frameon=True,
-            edgecolor=S.RULE,
+            edgecolor=S.INK,
+            fancybox=False,
         ).set_zorder(30)
 
 
@@ -141,7 +153,7 @@ def terrain_hillshade(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     ls = LightSource(azdeg=315, altdeg=45)
     shade = ls.hillshade(filled, vert_exag=2.0, dx=abs(res[0]), dy=abs(res[1]))
     minx, maxx, miny, maxy = _extent(aoi)
-    ax.imshow(shade, cmap="gray", extent=(minx, maxx, miny, maxy), origin="upper", alpha=0.85, zorder=1)
+    ax.imshow(shade, cmap="gray", extent=(minx, maxx, miny, maxy), origin="upper", alpha=0.55, zorder=1)
 
     rng = float(np.nanmax(arr) - np.nanmin(arr))
     interval = _contour_interval(rng)
@@ -149,14 +161,15 @@ def terrain_hillshade(ax: Axes, aoi: AOI, layers: dict[str, Any]) -> None:
     cs = ax.contour(
         filled,
         levels=levels,
-        colors=S.INK,
-        linewidths=S.LW["hair"],
+        colors=S.CONTOUR,
+        linewidths=S.LW["thin"],
         extent=(minx, maxx, miny, maxy),
         origin="upper",
         zorder=2,
     )
-    ax.clabel(cs, cs.levels[::2], fmt="%.0f", fontsize=S.FS["micro"], colors=S.INK)
-    S.scale_bar(ax, maxx - minx)
+    ax.clabel(
+        cs, cs.levels[::2], fmt="%.0f", fontsize=S.FS["micro"] - 0.5, colors=S.CONTOUR_LABEL, inline_spacing=2
+    )
 
 
 def _contour_interval(elevation_range: float) -> float:
@@ -202,17 +215,6 @@ def orientation_rose(ax: Axes, metrics: dict[str, Any]) -> None:
     counts = counts / counts.sum() if counts.sum() else counts
     ax.bar(theta, counts, width=width * 0.92, bottom=0.0, color=S.INK, edgecolor="none", align="edge")
     _polar_furniture(ax)
-    phi = (metrics.get("street") or {}).get("orientation_order_phi")
-    if phi is not None:
-        ax.text(
-            0.5,
-            -0.12,
-            f"order $\\varphi$ = {phi:.2f}",
-            transform=ax.transAxes,
-            ha="center",
-            fontsize=S.FS["small"],
-            color=S.MUTED,
-        )
 
 
 def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
@@ -227,7 +229,7 @@ def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
     n_dir = freqs.shape[0]
     width = 2 * np.pi / n_dir
     theta = np.arange(n_dir) * width
-    greys = ["#e0ddd6", "#bdb8ad", "#918a7d", "#635c50", "#332f27"]
+    greys = S.WIND
     bottom = np.zeros(n_dir)
     labels = (
         rose.get("speed_bin_labels")
@@ -248,12 +250,14 @@ def wind_rose(ax: Axes, layers: dict[str, Any]) -> None:
         bottom += freqs[:, j]
     _polar_furniture(ax)
     ax.legend(
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.34),
-        ncols=3,
-        fontsize=S.FS["micro"],
-        handlelength=0.9,
-        columnspacing=0.9,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.17),
+        ncols=len(labels),
+        fontsize=S.FS["micro"] - 0.5,
+        handlelength=0.8,
+        handletextpad=0.3,
+        columnspacing=0.6,
+        borderaxespad=0,
     )
 
 
@@ -263,6 +267,7 @@ def _polar_furniture(ax: Axes) -> None:
     ax.set_yticklabels([])
     ax.set_xticks(np.radians([0, 90, 180, 270]))
     ax.set_xticklabels(["N", "E", "S", "W"], fontsize=S.FS["micro"], color=S.MUTED)
+    ax.tick_params(axis="x", pad=-1)
     ax.grid(color=S.FAINT, lw=S.LW["hair"])
     ax.spines["polar"].set_visible(False)
     ax.set_facecolor(S.PAPER)
@@ -298,11 +303,7 @@ def sun_path(ax: Axes, aoi: AOI) -> None:
             color=S.MUTED,
         )
 
-    styles = {
-        "21 Jun": (S.LW["line"], S.ACCENT),
-        "21 Mar / 23 Sep": (S.LW["thin"], S.INK),
-        "21 Dec": (S.LW["thin"], S.MUTED),
-    }
+    styles = {label: (S.LW["line"], colour) for label, colour in S.SUN.items()}
     for label, pos in key_arcs(lat, lon).items():
         m = pos.above_horizon
         if not m.any():
@@ -311,7 +312,14 @@ def sun_path(ax: Axes, aoi: AOI) -> None:
         lw, colour = styles.get(label, (S.LW["thin"], S.INK))
         ax.plot(x, y, color=colour, lw=lw, label=label, solid_capstyle="round")
     ax.legend(
-        loc="lower center", bbox_to_anchor=(0.5, -0.16), ncols=1, fontsize=S.FS["micro"], handlelength=1.2
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncols=3,
+        fontsize=S.FS["micro"] - 0.5,
+        handlelength=1.0,
+        handletextpad=0.3,
+        columnspacing=0.7,
+        borderaxespad=0,
     )
 
 
@@ -338,8 +346,11 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
     S.strip(ax)
     ax.set_aspect("auto")
     ax.set_xlim(0, 1)
-    ax.set_ylim(-0.6, len(rows) - 0.4)
+    # Rows run top to bottom; each is a caption line above a bar.
+    n = len(rows)
+    ax.set_ylim(-0.45, n - 0.15)
     for i, (label, fracs, palette) in enumerate(rows):
+        y = n - 1 - i
         left = 0.0
         degraded = label.startswith("OSM") and lu.get("landuse_degraded")
         for key, val in sorted(fracs.items(), key=lambda kv: -kv[1]):
@@ -347,28 +358,33 @@ def landuse_bars(ax: Axes, metrics: dict[str, Any]) -> None:
                 continue
             colour = palette.get(key, "#dddddd")
             ax.barh(
-                i,
+                y,
                 val,
                 left=left,
-                height=0.5,
+                height=0.42,
                 color=colour,
                 edgecolor=S.PAPER,
                 linewidth=0.6,
                 alpha=0.45 if degraded and key != "unmapped" else 1.0,
             )
-            if val > 0.09:
+            if val >= 0.14:
                 ax.text(
-                    left + val / 2,
-                    i,
-                    f"{key}\n{val:.0%}",
-                    ha="center",
+                    left + 0.012,
+                    y,
+                    f"{_class_label(key)} {val:.0%}",
+                    ha="left",
                     va="center",
-                    fontsize=S.FS["micro"],
+                    fontsize=S.FS["micro"] - 0.5,
                     color=S.PAPER if _dark(colour) else S.INK,
+                    clip_on=True,
                 )
             left += val
-        ax.text(0, i + 0.36, label, fontsize=S.FS["micro"], color=S.MUTED, va="bottom")
-    ax.invert_yaxis()
+        ax.text(0, y + 0.27, label, fontsize=S.FS["micro"], color=S.MUTED, va="bottom")
+
+
+def _class_label(key: str) -> str:
+    """`green_space` -> `Green space`, as the web app labels classes."""
+    return key.replace("_", " ").capitalize()
 
 
 def _osm_landuse_fractions(lu: dict[str, Any]) -> dict[str, float]:
@@ -436,16 +452,7 @@ def locator(ax: Axes, aoi: AOI) -> None:
     for x in range(-150, 180, 30):
         ax.axvline(x, color=S.FAINT, lw=S.LW["hair"])
     ax.axhline(0, color=S.RULE, lw=S.LW["thin"])
-    ax.plot([lon], [lat], marker="+", color=S.ACCENT, ms=9, mew=1.1)
-    ax.text(
-        lon,
-        lat - 12,
-        f"{abs(lat):.2f}{'N' if lat >= 0 else 'S'}  {abs(lon):.2f}{'E' if lon >= 0 else 'W'}",
-        ha="center",
-        va="top",
-        fontsize=S.FS["micro"],
-        color=S.MUTED,
-    )
+    ax.plot([lon], [lat], marker="+", color=S.RED_LINE, ms=9, mew=1.1)
 
 
 def _empty(ax: Axes, msg: str) -> None:

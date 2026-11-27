@@ -1,16 +1,19 @@
 """The visual language of the sheet.
 
-The output has to read as a drawing, not a plot. That difference is almost
-entirely typography, weight and restraint: one typeface, four line weights, ink
-on paper rather than a colour ramp, and a graphic scale bar measured in the
-sheet's own metric CRS.
+It is the web app's drawing sheet on paper: white sheet, black ink, graphite for
+anything secondary, and one red line that only ever marks the site. One typeface,
+Archivo, with its expanded cut for the site name and the key figures, as on screen.
+The colours are the web app's (web/app/globals.css, web/lib/layers.ts), so a sheet
+printed from a site reads like the panel it came from.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib as mpl
+from matplotlib import font_manager
 
 from ..vocab import LANDUSE as _LANDUSE
 from ..vocab import colours as _vocab_colours
@@ -18,34 +21,56 @@ from ..vocab import colours as _vocab_colours
 # A3 landscape in inches. Vector PDF, so this is the real printed size.
 A3_LANDSCAPE = (16.54, 11.69)
 
-INK = "#1a1a1a"
+# Static cuts of Archivo (SIL OFL), built by scripts/build_sheet_fonts.py.
+FONT_DIR = Path(__file__).parent / "fonts"
+FONT = "Archivo"
+FONT_WIDE = "Archivo Expanded"
+
+INK = "#000000"
 PAPER = "#ffffff"
-RULE = "#c8c4bc"
-FAINT = "#e8e4dc"
-BUILT = "#242424"
+MUTED = "#6b7069"  # the web app's graphite
+RULE = "#dadcd7"
+FAINT = "#ecedea"
+RED_LINE = "#e0261b"  # the site, and nothing else
+ACCENT = RED_LINE
+BUILT = INK
+CONTEXT = "#c3c5bf"
 WATER = "#a9c3d0"
 GREEN = "#c3cfad"
-ROAD = "#5a5a5a"
-ACCENT = "#a4462d"
-MUTED = "#8a8478"
+ROAD = MUTED
+CONTOUR = "#92400e"
+CONTOUR_LABEL = "#78350f"
+
+# Sun path arcs and wind bands, as in the web app's climate panel.
+SUN = {"21 Jun": "#b45309", "21 Mar / 23 Sep": "#6d5fa6", "21 Dec": "#1d4ed8"}
+WIND = ("#d5d7d2", "#b0b3ad", "#8a8e87", "#5f635d", "#34372f", "#000000")
 
 # From sce/vocab.py so the sheet, SVG, QML and web agree on class names.
-LANDUSE_COLOURS = {**_vocab_colours(_LANDUSE, sheet=True), "unmapped": "#f2efe9"}
+LANDUSE_COLOURS = {**_vocab_colours(_LANDUSE, sheet=True), "unmapped": "#f2f2ef"}
 
 # The ESA WorldCover palette deliberately lives with its provider
 # (sce.providers.landcover_worldcover.CLASS_COLOURS) and not here, so the raster
 # panel and the land-use bar cannot drift apart. sce.report.figures reads it.
 
-# Four weights, used consistently: hairline, line, emphasis, frame.
-# Statutory designations. Distinguished by dash pattern as well as hue so the
-# sheet survives being printed in black and white, which is how a planning pack
-# usually arrives.
-CONSTRAINT_COLOURS = (ACCENT, "#4a6b8a", "#7a5c86", "#2f6b52")
-CONSTRAINT_DASHES = ((0, (4, 2)), (0, (1.5, 1.5)), (0, (6, 2, 1, 2)), (0, (3, 1, 1, 1)))
+# Statutory designations, by planning.data.gov.uk dataset: the web map's colours and labels.
+# Dash patterns as well, so the sheet survives a black-and-white print, which is how a
+# planning pack usually arrives.
+CONSTRAINT_STYLES = {
+    "conservation-area": ("Conservation area", "#15803d", (0, (4, 2))),
+    "listed-building": ("Listed building", "#9a3412", (0, (1.5, 1.5))),
+    "listed-building-outline": ("Listed building outline", "#9a3412", (0, (1.5, 1.5))),
+    "flood-risk-zone": ("Flood risk zone", "#1d4ed8", (0, (6, 2, 1, 2))),
+    "article-4-direction-area": ("Article 4 direction area", "#a16207", (0, (3, 1, 1, 1))),
+}
+CONSTRAINT_OTHER = ("Other constraint", "#7e22ce", (0, (2, 2)))
+# Kept for callers that cycle by index.
+CONSTRAINT_COLOURS = tuple(c for _, c, _ in CONSTRAINT_STYLES.values())
+CONSTRAINT_DASHES = tuple(d for _, _, d in CONSTRAINT_STYLES.values())
 
+# Four weights, used consistently: hairline, line, emphasis, frame.
 LW = {"hair": 0.25, "thin": 0.4, "line": 0.7, "bold": 1.2}
 
-FS = {"micro": 5.5, "small": 6.5, "body": 7.5, "label": 9.0, "head": 12.0, "title": 18.0}
+FS = {"micro": 6.0, "small": 7.0, "body": 7.5, "label": 8.5, "head": 11.0, "figure": 15.0, "title": 24.0}
 
 
 @dataclass(frozen=True)
@@ -57,15 +82,26 @@ class SheetStyle:
     muted: str = MUTED
 
 
+def _register_fonts() -> list[str]:
+    """Add the bundled Archivo cuts to matplotlib; the families found, else []."""
+    families = []
+    for path in sorted(FONT_DIR.glob("*.ttf")):
+        font_manager.fontManager.addfont(str(path))
+        families.append(font_manager.FontProperties(fname=str(path)).get_name())
+    return families
+
+
 def apply() -> None:
     """Set the global matplotlib style. Called once before any figure is made."""
+    _register_fonts()
     mpl.rcParams.update(
         {
             "figure.facecolor": PAPER,
             "axes.facecolor": PAPER,
             "savefig.facecolor": PAPER,
-            "font.family": "sans-serif",
-            "font.sans-serif": ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
+            # A list, so glyphs Archivo lacks (φ) fall back to DejaVu Sans, which matplotlib ships.
+            "font.family": [FONT, "DejaVu Sans"],
+            "font.sans-serif": [FONT, "Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
             "font.size": FS["body"],
             "text.color": INK,
             "axes.edgecolor": RULE,
@@ -76,7 +112,7 @@ def apply() -> None:
             "xtick.labelsize": FS["small"],
             "ytick.labelsize": FS["small"],
             "legend.frameon": False,
-            "legend.fontsize": FS["small"],
+            "legend.fontsize": FS["micro"],
             "pdf.fonttype": 42,  # embed as TrueType so the PDF is editable text
             "ps.fonttype": 42,
             "svg.fonttype": "none",
@@ -99,25 +135,26 @@ def strip(ax, *, keep_frame: bool = False) -> None:
     ax.set_aspect("equal")
 
 
-def panel_title(ax, text: str, sub: str = "") -> None:
-    """A rule and a label above the panel.
+def panel_title(ax, text: str, sub: str = "", *, pad: float = 6.0) -> None:
+    """A section heading above the panel, as the web app's cards have: sentence case,
+    semibold, with an optional graphite note on the right. No rule: space separates.
 
     Offsets are in points, not axes fractions: a fraction of a tall panel is a
     much larger gap than a fraction of a short one, which makes every title sit
-    at a different height and, on the tallest panel, collide with the header.
+    at a different height. Polar panels pass a larger `pad` to clear their N label.
     """
     ax.set_title("")
     ax.annotate(
-        " ".join(text.upper()),
+        text[:1].upper() + text[1:],
         xy=(0, 1),
         xycoords="axes fraction",
-        xytext=(0, 9),
+        xytext=(0, pad),
         textcoords="offset points",
-        fontsize=FS["small"],
+        fontsize=FS["label"],
         color=INK,
         ha="left",
         va="bottom",
-        weight="bold",
+        weight="semibold",
         annotation_clip=False,
     )
     if sub:
@@ -125,7 +162,7 @@ def panel_title(ax, text: str, sub: str = "") -> None:
             sub,
             xy=(1, 1),
             xycoords="axes fraction",
-            xytext=(0, 9),
+            xytext=(0, pad),
             textcoords="offset points",
             fontsize=FS["micro"],
             color=MUTED,
@@ -133,19 +170,6 @@ def panel_title(ax, text: str, sub: str = "") -> None:
             va="bottom",
             annotation_clip=False,
         )
-    ax.annotate(
-        "",
-        xy=(0, 1),
-        xycoords="axes fraction",
-        xytext=(0, 6),
-        textcoords="offset points",
-        annotation_clip=False,
-    )
-    line = mpl.lines.Line2D([0, 1], [1, 1], transform=ax.transAxes, color=RULE, lw=LW["thin"], clip_on=False)
-    line.set_transform(
-        ax.transAxes + mpl.transforms.ScaledTranslation(0, 6 / 72.0, ax.figure.dpi_scale_trans)
-    )
-    ax.add_line(line)
 
 
 def nice_scale_length(span_m: float) -> float:
@@ -185,9 +209,17 @@ def scale_bar(ax, span_m: float, *, y: float = 0.045, x: float = 0.045) -> None:
         )
     )
     label = f"{length:.0f} m" if length < 1000 else f"{length / 1000:.0f} km"
-    ax.text(bx, by + h * 1.8, "0", fontsize=FS["micro"], color=INK, ha="center", va="bottom", zorder=20)
+    backing = dict(facecolor=PAPER, edgecolor="none", pad=0.8)
+    ax.text(bx, by + h * 1.8, "0", fontsize=FS["micro"], ha="center", va="bottom", zorder=20, bbox=backing)
     ax.text(
-        bx + length, by + h * 1.8, label, fontsize=FS["micro"], color=INK, ha="center", va="bottom", zorder=20
+        bx + length,
+        by + h * 1.8,
+        label,
+        fontsize=FS["micro"],
+        ha="center",
+        va="bottom",
+        zorder=20,
+        bbox=backing,
     )
 
 
@@ -210,9 +242,13 @@ def north_arrow(ax, *, x: float = 0.955, y: float = 0.06) -> None:
         color=INK,
         ha="center",
         va="bottom",
+        weight="semibold",
         zorder=20,
+        bbox=dict(facecolor=PAPER, edgecolor="none", pad=0.8),
     )
 
 
-def rule_line(fig, y: float, x0: float = 0.03, x1: float = 0.97, lw: float | None = None) -> None:
-    fig.add_artist(mpl.lines.Line2D([x0, x1], [y, y], color=RULE, lw=lw or LW["thin"]))
+def rule_line(
+    fig, y: float, x0: float = 0.03, x1: float = 0.97, lw: float | None = None, color: str = RULE
+) -> None:
+    fig.add_artist(mpl.lines.Line2D([x0, x1], [y, y], color=color, lw=lw or LW["thin"]))
