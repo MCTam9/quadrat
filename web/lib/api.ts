@@ -112,7 +112,7 @@ export const climate = (siteId: string, t: TokenGetter, s?: AbortSignal) =>
   json<Climate>("/api/climate", { site_id: siteId }, t, s);
 
 export async function exportZip(
-  p: SiteParams & { formats: string[]; report: boolean },
+  p: SiteParams & { formats: string[]; report: boolean; title?: string },
   getToken: TokenGetter,
   signal?: AbortSignal,
 ): Promise<Blob> {

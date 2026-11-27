@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from shapely.geometry.polygon import orient
 
 from ..types import LayerResult
 from ._contours import terrain_contours
@@ -74,12 +75,18 @@ def _attrs(rhino3dm, doc, layer_name: str):
 
 
 def _polygon_parts(geom):
-    """(exterior_ring, [hole_rings]) per polygon part, dropping the Z ezdxf-style tuples."""
+    """(exterior_ring, [hole_rings]) per polygon part, dropping the Z ezdxf-style tuples.
+
+    Rings come out oriented: exterior counter-clockwise, holes clockwise. `Extrusion.Create`
+    extrudes along the profile's normal, so a clockwise exterior (common in OSM data and in
+    shapely's clip output) would push the massing down into the ground.
+    """
     parts = []
     geoms = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
     for g in geoms:
         if g.is_empty:
             continue
+        g = orient(g, sign=1.0)
         exterior = [(x, y) for x, y, *_ in g.exterior.coords]
         holes = [[(x, y) for x, y, *_ in interior.coords] for interior in g.interiors]
         parts.append((exterior, holes))

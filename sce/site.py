@@ -345,7 +345,9 @@ class Site:
             return layers
         return layers if climate is None else {**layers, "climate": climate}
 
-    def export(self, square: AOI, formats: list[str], out: Path, *, report: bool = True) -> list[Path]:
+    def export(
+        self, square: AOI, formats: list[str], out: Path, *, report: bool = True, title: str | None = None
+    ) -> list[Path]:
         """Write the chosen formats, the dossier, georef sidecars and a README into `out`.
 
         Returns every file written, README first. Raises ValueError for an unknown format.
@@ -357,7 +359,7 @@ class Site:
             raise ValueError(f"unknown formats {unknown}; allowed: {sorted(pipeline.EXPORTERS)}")
         layers = self._with_climate(self.layers_for(square))
         written = pipeline.run_report(
-            square, layers, out, list(dict.fromkeys(formats)), sheet=report, georef=True
+            square, layers, out, list(dict.fromkeys(formats)), sheet=report, georef=True, title=title
         )
         files: list[Path] = []
         for p in written:

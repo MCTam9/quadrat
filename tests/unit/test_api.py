@@ -339,6 +339,21 @@ def test_export_service_serves_only_export(monkeypatch, calls):
     assert exp.post("/api/export", json=_body(formats=["docx"])).json()["error"].count("docx") == 1
 
 
+def test_export_passes_the_title_to_the_sheet(client, monkeypatch):
+    seen = {}
+
+    def fake_sheet(path, aoi, layers, metrics, assessment=None, *, title=None):
+        seen["title"] = title
+        path.write_bytes(b"%PDF")
+        return path
+
+    monkeypatch.setattr("sce.report.sheet.render_sheet", fake_sheet)
+    _load(client)
+    r = client.post("/api/export", json=_body(formats=[], report=True, title="Trafalgar Square"))
+    assert r.status_code == 200 and seen["title"] == "Trafalgar Square"
+    assert client.post("/api/export", json=_body(title="x" * 121)).status_code == 422
+
+
 def test_export_unknown_format(client):
     r = client.post("/api/export", json=_body(formats=["docx"]))
     assert r.status_code == 400 and "docx" in r.json()["error"]

@@ -178,3 +178,22 @@ def test_write_3dm_no_terrain_no_crash(tmp_path, aoi, buildings_gdf):
     layers = {"buildings": LayerResult(layer="buildings", provider="synthetic", gdf=buildings_gdf)}
     out = write_3dm(tmp_path / "no_terrain.3dm", layers, aoi)
     assert out.exists()
+
+
+@pytest.mark.parametrize("clockwise", [False, True], ids=["ccw", "cw"])
+def test_write_3dm_massing_rises_from_ground_whatever_the_ring_order(tmp_path, aoi, clockwise):
+    """`Extrusion.Create` follows the profile normal, so a clockwise ring used to extrude downwards."""
+    cx, cy = aoi.geometry.centroid.x, aoi.geometry.centroid.y
+    ring = [(cx, cy), (cx + 20, cy), (cx + 20, cy + 20), (cx, cy + 20)]
+    hole = [(cx + 5, cy + 5), (cx + 5, cy + 10), (cx + 10, cy + 10), (cx + 10, cy + 5)]
+    if clockwise:
+        ring, hole = ring[::-1], hole[::-1]
+    gdf = gpd.GeoDataFrame({"height_m": [12.0]}, geometry=[Polygon(ring, [hole])], crs=aoi.crs)
+    layers = {"buildings": LayerResult(layer="buildings", provider="synthetic", gdf=gdf)}
+
+    doc = rhino3dm.File3dm.Read(str(write_3dm(tmp_path / "orient.3dm", layers, aoi)))
+    (massing,) = _by_layer(doc)["BLDG-MASSING"]
+    bbox = massing.Geometry.GetBoundingBox()
+    bottom, top = bbox.Min.Z, bbox.Max.Z
+    assert bottom == pytest.approx(0.0)
+    assert top == pytest.approx(12.0)

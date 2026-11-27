@@ -48,6 +48,10 @@ sce = "sce.cli:main"
 [tool.setuptools.packages.find]
 include = ["sce*"]
 
+[tool.setuptools.package-data]
+# Archivo for the PDF sheet (SIL OFL; built by scripts/build_sheet_fonts.py).
+"sce.report" = ["fonts/*.ttf", "fonts/OFL.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Live tests are opt-in. Without this, a plain `pytest` silently starts hitting

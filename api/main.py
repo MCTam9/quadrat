@@ -268,6 +268,8 @@ class ExportRequest(Point):
     half_width_m: float = Field(ge=MIN_HALF_WIDTH_M, le=MAX_HALF_WIDTH_M)
     formats: list[str] = Field(default_factory=list)
     report: bool = True
+    # The place name the web panel shows, for the PDF sheet's header.
+    title: str | None = Field(default=None, max_length=120)
 
 
 # ---------------------------------------------------------------- helpers
@@ -533,7 +535,7 @@ def export(req: ExportRequest) -> StreamingResponse:
     tmp = Path(tempfile.mkdtemp(prefix="sce-export-"))
     try:
         try:
-            files = site.export(square, req.formats, tmp / "files", report=req.report)
+            files = site.export(square, req.formats, tmp / "files", report=req.report, title=req.title)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         archive = tmp / "bundle.zip"
