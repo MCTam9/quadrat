@@ -314,6 +314,31 @@ def test_export_geojson(client):
     assert "site.geojson" in zipfile.ZipFile(io.BytesIO(r.content)).namelist()
 
 
+def test_export_service_restores_a_site_loaded_elsewhere(client, calls, store):
+    """On Vercel `/api/export` runs in its own function: the site comes from the snapshot store."""
+    import api.export as api_export
+
+    _load(client)
+    api_main.SITES.clear()  # a different instance: nothing in memory, only the snapshot
+    exp = TestClient(api_export.app)
+    r = exp.post("/api/export", json=_body(formats=["dxf"], report=False))
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert len(calls) == 1  # restored, not fetched again
+    assert "site.dxf" in zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+
+
+def test_export_service_serves_only_export(monkeypatch, calls):
+    import api.export as api_export
+
+    monkeypatch.delenv("SCE_AUTH_DISABLED", raising=False)
+    exp = TestClient(api_export.app)
+    assert exp.get("/api/health").json()["ok"] is True
+    assert exp.post("/api/export", json=_body(formats=["dxf"])).status_code == 401
+    monkeypatch.setenv("SCE_AUTH_DISABLED", "1")
+    assert exp.post("/api/load", json={"lon": LON, "lat": LAT}).status_code == 404
+    assert exp.post("/api/export", json=_body(formats=["docx"])).json()["error"].count("docx") == 1
+
+
 def test_export_unknown_format(client):
     r = client.post("/api/export", json=_body(formats=["docx"]))
     assert r.status_code == 400 and "docx" in r.json()["error"]

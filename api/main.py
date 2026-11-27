@@ -49,7 +49,7 @@ from sce.site import OutsideSite, Site, jsonable, layer_geojson, padded_half_wid
 from sce.store import SnapshotStore, default_store
 from sce.types import LayerResult
 
-__all__ = ["app", "padded_half_width", "site_key"]
+__all__ = ["app", "exports", "make_app", "padded_half_width", "site_key"]
 
 log = logging.getLogger("sce.api")
 
@@ -300,9 +300,6 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Quadrat API", lifespan=_lifespan, docs_url=None, redoc_url=None)
-
-
 class _SelectiveGZip(GZipMiddleware):
     """GZip for the JSON routes only.
 
@@ -320,42 +317,54 @@ class _SelectiveGZip(GZipMiddleware):
         await super().__call__(scope, receive, send)
 
 
-# Added first so CORS (added next) wraps it: CORS headers land on compressed responses too.
-app.add_middleware(_SelectiveGZip, minimum_size=1024)
-if CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=CORS_ORIGINS,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["Content-Disposition"],
-    )
-
-
-@app.exception_handler(HTTPException)
 async def _http_error(_: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse({"error": str(exc.detail)}, status_code=exc.status_code, headers=exc.headers)
 
 
-@app.exception_handler(RequestValidationError)
 async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
     first = exc.errors()[0] if exc.errors() else {}
     loc = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
     return JSONResponse({"error": f"invalid {loc}: {first.get('msg', 'bad request')}"}, status_code=422)
 
 
-@app.exception_handler(Exception)
 async def _internal_error(_: Request, exc: Exception) -> JSONResponse:
     log.exception("unhandled error", exc_info=exc)
     return JSONResponse({"error": "internal error"}, status_code=500)
 
 
-@app.get("/api/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "version": sce.__version__}
 
 
+def make_app(title: str) -> FastAPI:
+    """A FastAPI app with the shared middleware, error shapes and `/api/health`, but no routes.
+
+    Both deployed functions build their app here: this module's `app` (site routes plus export,
+    which is what local development runs) and `api/export.py` (export only).
+    """
+    app = FastAPI(title=title, lifespan=_lifespan, docs_url=None, redoc_url=None)
+    # Added first so CORS (added next) wraps it: CORS headers land on compressed responses too.
+    app.add_middleware(_SelectiveGZip, minimum_size=1024)
+    if CORS_ORIGINS:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=CORS_ORIGINS,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+            expose_headers=["Content-Disposition"],
+        )
+    app.add_exception_handler(HTTPException, _http_error)
+    app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(Exception, _internal_error)
+    app.add_api_route("/api/health", health, methods=["GET"])
+    return app
+
+
 api = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
+# Export has its own router so `api/export.py` can serve it alone: it is the only route that
+# needs the report and CAD stack (matplotlib, ezdxf, rhino3dm, trimesh), which the site
+# function's bundle leaves out.
+exports = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
 
 
 @api.post("/load")
@@ -507,7 +516,7 @@ def _iter_file(path: Path) -> Iterator[bytes]:
             yield chunk
 
 
-@api.post("/export")
+@exports.post("/export")
 def export(req: ExportRequest) -> StreamingResponse:
     """Zip of the chosen formats. Uses the loaded site when the square fits it, else fetches."""
     site = _lookup(req.site_id)
@@ -547,4 +556,8 @@ def export(req: ExportRequest) -> StreamingResponse:
     )
 
 
+# Local development and tests run everything in one app. On Vercel `/api/export` is routed to
+# `api/export.py` instead (vercel.json), so this copy of the route is never reached there.
+app = make_app("Quadrat API")
 app.include_router(api)
+app.include_router(exports)

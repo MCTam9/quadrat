@@ -138,6 +138,10 @@ invent a number: when coverage is too low, return None and report the coverage.
 
 `api/main.py` (FastAPI, `pip install -e ".[web]"`) and `web/` (Next.js). The API
 verifies Clerk session JWTs unless `SCE_AUTH_DISABLED=1` (local development only).
+Locally `api.main:app` serves every route. On Vercel `/api/export` is a separate service
+(`api/export.py`) and the main API service ships without matplotlib, Pillow, ezdxf, rhino3dm
+and trimesh, so nothing outside export may import them: terrain contours use contourpy
+directly, and `tests/meta/test_site_api_without_report_stack.py` enforces it.
 Web checks run in CI as their own job: `npm run typecheck`, `lint`, `test`, `build`.
 
 ## Style
