@@ -359,8 +359,12 @@ def run_report(
     *,
     sheet: bool = True,
     georef: bool = False,
+    title: str | None = None,
 ) -> list[Path]:
-    """Analyse fetched layers and write the dossier, optional PDF sheet and exports."""
+    """Analyse fetched layers and write the dossier, optional PDF sheet and exports.
+
+    `title` heads the sheet (the place name the web app shows); file names keep `aoi.name`.
+    """
     from .export.dossier import write_dossier
 
     out.mkdir(parents=True, exist_ok=True)
@@ -370,7 +374,7 @@ def run_report(
     if sheet:
         from .report.sheet import render_sheet
 
-        written.append(render_sheet(out / f"{name}.pdf", aoi, layers, metrics, assessment))
+        written.append(render_sheet(out / f"{name}.pdf", aoi, layers, metrics, assessment, title=title))
     written.extend(run_exports(exports, out, name, aoi, layers, metrics))
     if georef:
         from .export._georef import write_georef

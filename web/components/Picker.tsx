@@ -318,7 +318,10 @@ export function Picker() {
     setExporting(true);
     try {
       const ready = await ensureLoaded(s, new AbortController().signal);
-      const blob = await exportZip({ site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM, ...r }, tok);
+      const blob = await exportZip(
+        { site_id: ready.site_id, lon: s.lon, lat: s.lat, half_width_m: s.halfWidthM, title: name?.title, ...r },
+        tok,
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
